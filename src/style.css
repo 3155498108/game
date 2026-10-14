@@ -1,0 +1,556 @@
+/* 站点壳样式：纯静态、无框架。
+   要点：安全区内边距、可点击元素 ≥44px、375 宽无横向滚动、桌面端居中。 */
+
+:root {
+  color-scheme: dark;
+  --bg: #0b1424;
+  --bg2: #16263d;
+  --panel: #1f3352;
+  --panel-light: #2b4468;
+  --line: #3a5680;
+  --text: #f4f7fb;
+  --dim: #9fb3cf;
+  --accent: #ffcc33;
+  --accent2: #4fd1c5;
+  --radius: 16px;
+  --tap: 44px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* 游玩时锁滚动，画布区自己处理缩放 */
+body.playing {
+  overflow: hidden;
+  height: 100dvh;
+}
+
+/* ---------------- 通用按钮 ---------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-light);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.08s ease, filter 0.15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: #e0b42c;
+  color: #3a2a00;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--dim);
+}
+
+.btn.icon {
+  padding: 0;
+  font-size: 20px;
+}
+
+/* ---------------- 首页 ---------------- */
+
+.home {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: calc(16px + var(--safe-t)) calc(16px + var(--safe-r)) calc(24px + var(--safe-b)) calc(16px + var(--safe-l));
+}
+
+.home-head h1 {
+  margin: 0 0 12px;
+  font-size: clamp(22px, 5.5vw, 30px);
+  letter-spacing: 1px;
+}
+
+.home-head h1 small {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--dim);
+  margin-left: 8px;
+}
+
+.search {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg2);
+  color: var(--text);
+  font: inherit;
+}
+
+.search::placeholder {
+  color: #6b7f9c;
+}
+
+.daily {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid #6a5a1e;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, #2a2617, #1d2138);
+  text-decoration: none;
+  color: inherit;
+}
+
+.daily-k {
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.daily-n {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.daily-s {
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chip.on {
+  background: var(--accent);
+  border-color: #e0b42c;
+  color: #3a2a00;
+  font-weight: 700;
+}
+
+.group h2 {
+  margin: 22px 0 10px;
+  font-size: 17px;
+  color: var(--dim);
+  font-weight: 600;
+}
+
+.group h2 small {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.game-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg2);
+  text-decoration: none;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.game-card:hover {
+  border-color: var(--accent2);
+}
+
+.gc-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--panel);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.cat-card .gc-icon { color: #ff8a80; }
+.cat-board .gc-icon { color: #90caf9; }
+.cat-puzzle .gc-icon { color: #b39ddb; }
+.cat-mini .gc-icon { color: #80cbc4; }
+.cat-arcade .gc-icon { color: #ffd54f; }
+
+.gc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gc-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.gc-sum {
+  font-size: 12px;
+  color: var(--dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.gc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.tag {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.tag.best {
+  background: rgba(255, 204, 51, 0.18);
+  color: var(--accent);
+}
+
+.empty {
+  margin: 40px 0;
+  text-align: center;
+  color: var(--dim);
+}
+
+.home-foot {
+  margin-top: 32px;
+  text-align: center;
+  font-size: 12px;
+  color: #6b7f9c;
+}
+
+/* ---------------- 游戏页 ---------------- */
+
+.play {
+  --game-w: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  overflow: hidden;
+}
+
+/* 顶栏与操作区跟随画面实际宽度居中（--game-w 由运行时按缩放结果写入） */
+.bar,
+.dock {
+  width: 100%;
+  max-width: var(--game-w);
+  margin-inline: auto;
+}
+
+.bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(58, 86, 128, 0.4);
+}
+
+.bar .btn.back {
+  flex: 0 0 auto;
+  padding: 0 12px;
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.title h1 {
+  margin: 0;
+  font-size: 17px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  /* 游戏名较长时（如「数字华容道」）必须单行，否则会把顶栏撑成两行 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title h1 small {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--dim);
+}
+
+.hint {
+  margin: 1px 0 0;
+  font-size: 12.5px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.game-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 204, 51, 0.95);
+  color: #3a2a00;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* 横竖屏提示层 */
+.rotate-tip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  background: rgba(8, 17, 30, 0.96);
+  text-align: center;
+  z-index: 5;
+}
+
+.rotate-tip[hidden] {
+  display: none;
+}
+
+.rotate-tip p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--dim);
+  line-height: 1.8;
+}
+
+.phone {
+  width: 54px;
+  height: 92px;
+  border: 3px solid var(--accent);
+  border-radius: 10px;
+  animation: rotateHint 2.2s ease-in-out infinite;
+}
+
+.phone.landscape {
+  width: 92px;
+  height: 54px;
+}
+
+@keyframes rotateHint {
+  0%, 40% { transform: rotate(0deg); }
+  60%, 100% { transform: rotate(90deg); }
+}
+
+/* 底部提示与操作区 */
+.dock {
+  flex: 0 0 auto;
+  padding: 8px 10px 10px;
+  border-top: 1px solid rgba(58, 86, 128, 0.4);
+  background: rgba(11, 20, 36, 0.7);
+}
+
+.best {
+  display: block;
+  font-size: 12px;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+.ctrls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ctrls:empty {
+  display: none;
+}
+
+.ctrls .btn {
+  flex: 1 1 auto;
+  min-width: 88px;
+  padding: 0 12px;
+  font-size: 15px;
+}
+
+/* ---------------- 响应式微调 ---------------- */
+
+/* 矮屏（横屏手机）：压缩上下留白，把高度让给画面 */
+@media (max-height: 480px) {
+  .bar {
+    padding: 4px 10px;
+  }
+
+  .dock {
+    padding: 6px 10px 8px;
+  }
+
+  .title h1 {
+    font-size: 15px;
+  }
+
+  .hint {
+    font-size: 11.5px;
+  }
+
+  .ctrls .btn {
+    min-height: 40px;
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 900px) {
+  .play {
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  .home {
+    padding-top: calc(32px + var(--safe-t));
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone {
+    animation: none;
+  }
+
+  .btn {
+    transition: none;
+  }
+}

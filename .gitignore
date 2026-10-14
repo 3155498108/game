@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.vite/
+*.local
+
+# 原始需求规格：不随代码公开（项目文档 README/DECISIONS 才是随仓库走的）
+PROMPT.md
+
+# 自检用的临时对照页，不属于项目源码
+vp-one.html
+
+# 探针 / 临时脚本（rules.ts 不允许 Math.random，临时探针一律不留）
+**/_probe.*
+**/_scratch.*
+**/tmp-*
+
+.DS_Store
+Thumbs.db
+*.log
