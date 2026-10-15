@@ -89,7 +89,9 @@ export function hitColumn(p: { x: number; y: number }): number {
 
 /** 画一颗球（章鱼烧的圆面 + 高光 + 顶上的木鱼花） */
 function drawBall(ctx: CanvasRenderingContext2D, x: number, y: number, color: number, r = BALL_R, alpha = 1): void {
-  const fill = BALL_COLORS[(color - 1) % BALL_COLORS.length]
+  // 越界保护：color 若是 0 或 NaN，下标会算成 -1 / NaN，查表拿到 undefined，
+  // 而 undefined 传进 withAlpha → parseHex 会抛异常，把整个画面打黑。
+  const fill = BALL_COLORS[(color - 1) % BALL_COLORS.length] ?? BALL_COLORS[0]
   disc(ctx, x, y, r, fill, { alpha, ring: withAlpha('#000000', 0.25) })
   ctx.save()
   ctx.globalAlpha = alpha
@@ -170,14 +172,20 @@ function drawBalls(ctx: CanvasRenderingContext2D, s: State): void {
   const falling = s.lastDrop !== null && !clearing
   const dropP = falling ? progressSince('tk-drop', sig, DROP_MS, ease.inQuad) : 1
 
-  // 本次落子的那一格不在常规循环里画，由下落动画单独负责
+  // 本次落子的那一格不在常规循环里画，由下落动画单独负责。
+  //
+  // 但 `flying` 是按「落子当时那一格」推出来的下标，而落子之后消除会压实整个网格 ——
+  // 那一格可能已经被消成 0，或者被上方的球挤到了别处。颜色一旦查表越界
+  // （0 → 下标 -1 → undefined），整个 render 就会抛异常、画面直接黑掉。
+  // 所以「跳过常规循环」和「走下落动画」必须用同一个条件：那一格里确实还有球。
   const flying = falling && dropP < 1 ? idx(s.lastDrop?.col ?? 0, s.lastDrop?.row ?? 0) : -1
+  const flyColor = flying >= 0 ? s.grid[flying] : 0
 
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const i = idx(c, r)
       const v = s.grid[i]
-      if (v === 0 || i === flying) continue
+      if (v === 0 || (i === flying && flyColor)) continue
       const [x, y0] = cellCenter(c, r)
       // 消行后上方整体下移一格：交给 tweenTo 平滑过去，键只跟格子下标有关
       const y = tweenTo(`tk-y${i}`, y0, SETTLE_MS)
@@ -185,13 +193,13 @@ function drawBalls(ctx: CanvasRenderingContext2D, s: State): void {
     }
   }
 
-  if (flying && s.lastDrop) {
+  if (flying >= 0 && flyColor && s.lastDrop) {
     const [x, y1] = cellCenter(s.lastDrop.col, s.lastDrop.row)
     const y0 = SPAWN.y + SPAWN.h / 2
     const y = y0 + (y1 - y0) * dropP
     // 落子期间把旁路缓存钉在动画当前位置，避免落定后又补一段多余的滑动
     tweenTo(`tk-y${flying}`, y, 0)
-    drawBall(ctx, x, y, s.grid[flying], BALL_R * (1 + dropP * 0.06))
+    drawBall(ctx, x, y, flyColor, BALL_R * (1 + dropP * 0.06))
   }
 }
 

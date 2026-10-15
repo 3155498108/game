@@ -200,15 +200,22 @@ interface GameModule<S = any, A = any> extends GameMeta {
 
    这样 `reduce` 保持纯净，计时常量也能在测试里直接断言。
 
-7. **验证**（三条全过才算完成）：
+7. **验证**（四条全过才算完成）：
 
    ```bash
-   npx vitest run src/games/<game-id>   # 测试全绿
+   npx vitest run src/games/<game-id>   # 这个游戏自己的单测全绿
+   npx vitest run src/smoke.test.ts     # 全站冒烟：这个游戏的 render / effects / 控件接线也没问题
    npx tsc --noEmit                     # 退出码 0
    npm run build                        # 构建成功
    ```
 
    然后 `npm run dev`，在首页确认卡片出现、点进去能完整玩完一局。
+
+   > `src/smoke.test.ts` 是全站冒烟：用普通对象冒充 `CanvasRenderingContext2D`，按站点壳的方式
+   > （`aiAction` → `controls()` → 画布点击探针 → `tick(16)`）把 38 款各推一遍。
+   > **单测只驱动 `rules.ts`，够不到 `index.ts` 这一层**——`render()` 会不会抛、控件有没有真的接到
+   > `reduce` 上，只有它能查（章鱼烧的渲染崩溃就是它挖出来的，见 `DECISIONS.md` 4.14）。
+   > 新增游戏不用改它，glob 会自动发现。
 
 ### 写新游戏时的几个易踩点
 
@@ -221,6 +228,7 @@ interface GameModule<S = any, A = any> extends GameMeta {
 - **`noUnusedLocals`**：tsconfig 开了这个开关，未使用的变量和参数都会让构建失败。
   看到「某 import 未使用」时顺手查一下它是不是被删掉的调用留下的——这往往是删代码只删了一半的信号。
 - **规格里显式写出的约束要逐条勾**：`link-six` 能检测「连到已消除的球」却漏了规格明确要求的「不允许自交」，就是靠逐条核对才发现的（`DECISIONS.md` 4.8）。
+- **动画旁路推出来的下标，别直接拿去索引 state 里的数组**：动画签名描述的是「刚刚发生了什么」，而数组内容可能已经被后续规则改写。章鱼烧按「本次落子的格子」读颜色，消除压实后那一格是 0，查表越界拿到 `undefined`，整个 `render` 抛异常、画面黑掉（`DECISIONS.md` 4.14）。
 - **音效**：在 `effects(prev, next)` 里根据前后状态差异返回 `{ kind: 'sound', name: 'place' }` 之类，不要在 `reduce` 里直接调播放函数。
 
 ---
@@ -267,10 +275,11 @@ interface GameModule<S = any, A = any> extends GameMeta {
 
 **验收现状**（全部实测通过）：
 
-- `npm test` → **38 个测试文件 / 1342 个用例全绿**
+- `npm test` → **39 个测试文件 / 1421 个用例全绿**（38 份游戏单测 + 1 份全站冒烟）
 - `npx tsc --noEmit` → **零错误**
-- `npm run build` → 成功；**站点壳主块 15.2 KB gzip**（上限 50 KB），41 个游戏块各 4.5~6 KB gzip 按需加载
+- `npm run build` → 成功；**站点壳主块 15.6 KB gzip**（上限 50 KB），41 个游戏块各 3.5~6 KB gzip 按需加载
 - **38 款在 375×667 与 1440×900 两个视口下均无横向溢出**，顶栏/操作区跟随画面宽度居中
 - `rules.ts` 全局无 `Math.random` / `Date` / `performance`（仅注释中出现说明性文字）
+- 全站冒烟（`src/smoke.test.ts`）：38 款的 `render` / `effects` / `controls` 接线在整局每一步都不抛错，通用驱动能推完 25/38 款
 
-实现过程中踩过的坑——真 bug（坦克对决 47% 对局死循环）、假 bug、以及「测试写错 vs 代码写错」的归因方法——都记在 `DECISIONS.md` 第四节；不实现的 7 类游戏及原因见第一节。
+实现过程中踩过的坑——真 bug（坦克对决 47% 对局死循环、章鱼烧渲染崩溃）、假 bug（冒烟测试自己有 5 个坑）、以及「测试写错 vs 代码写错」的归因方法——都记在 `DECISIONS.md` 第四节；不实现的 7 类游戏及原因见第一节。
