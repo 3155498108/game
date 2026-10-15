@@ -12,7 +12,6 @@ import {
   COLORS,
   background,
   banner,
-  button,
   darken,
   fillRoundRect,
   lighten,
@@ -23,7 +22,7 @@ import {
 } from '../../render/draw'
 import { keepAlive, progressSince, resetAnims, tweenTo } from '../../render/anim'
 import type { Rect } from '../../core/geom'
-import { clamp, inRect, rowLayout } from '../../core/geom'
+import { clamp, inRect } from '../../core/geom'
 import meta from './meta'
 import {
   LEVELS,
@@ -60,8 +59,6 @@ export const BOARD_Y = 214
 export const BOARD_RECT: Rect = { x: BOARD_X - 14, y: BOARD_Y - 14, w: BOARD_W + 28, h: BOARD_W + 28 }
 /** 右侧出口通道 */
 export const EXIT_RECT: Rect = { x: BOARD_X + BOARD_W + 8, y: BOARD_Y, w: 58, h: BOARD_W }
-/** 画面上自绘的三个按钮，与 controls() 一一对应 */
-export const BTN_RECTS: Rect[] = rowLayout(3, 1006, 200, 104, 20, VW)
 /** 落位动画时长（毫秒） */
 const SLIDE_MS = 180
 
@@ -216,17 +213,15 @@ function drawCars(ctx: CanvasRenderingContext2D, state: State): void {
 }
 
 function drawFooter(ctx: CanvasRenderingContext2D, state: State): void {
-  const last = state.level === LEVELS.length - 1
   const tip = state.solved
     ? `「${LEVELS[state.level].name}」通关，${state.moves} 步`
     : '按住车沿它自己的方向拖动 · 不能重叠也不能穿车'
   fillRoundRect(ctx, 36, 858, VW - 72, 96, 22, 'rgba(255,255,255,0.08)')
   text(ctx, tip, VW / 2, 906, { size: 26, weight: 'bold' })
 
-  button(ctx, BTN_RECTS[0], '上一关', { color: '#3c6ea5', size: 32 })
-  button(ctx, BTN_RECTS[1], last ? '回到第 1 关' : '下一关', { color: COLORS.accent, textColor: '#2a1d00', size: 32, active: state.solved })
-  button(ctx, BTN_RECTS[2], '重开本关', { color: '#4a5a76', size: 32, disabled: state.moves === 0 && !state.solved })
-  text(ctx, `共 ${LEVELS.length} 关 · 方向键滑动选中车 · Tab 换车`, VW / 2, 1176, { size: 22, color: COLORS.textDim })
+  // 换关 / 重开交给站点壳的控件区（controls），画布上不再自绘第二套按钮 ——
+  // 否则同一个操作会在画面里出现两次，玩家会以为按错了却没反应。
+  text(ctx, `共 ${LEVELS.length} 关 · 方向键滑动选中车 · Tab 换车`, VW / 2, 1000, { size: 22, color: COLORS.textDim })
 }
 
 function drawWin(ctx: CanvasRenderingContext2D, state: State): void {
@@ -303,15 +298,6 @@ function controls(state: State): Control<Action>[] {
 
 // ---------------- 输入 ----------------
 
-/** 画布上自绘按钮的命中；返回对应 action，未命中返回 null */
-function buttonAction(state: State, p: PointerInput): Action | null {
-  const i = BTN_RECTS.findIndex((r) => inRect(p, r))
-  if (i < 0) return null
-  if (i === 0) return { type: 'level', index: (state.level - 1 + LEVELS.length) % LEVELS.length }
-  if (i === 1) return { type: 'level', index: state.level === LEVELS.length - 1 ? 0 : state.level + 1 }
-  return { type: 'level', index: state.level }
-}
-
 /** 按下：命中车就起一次拖拽（范围来自 slideRange）；在出口通道按下则把红车直接拉到出口 */
 function beginDrag(state: State, p: PointerInput): Action | null {
   const t = targetCar(state.cars)
@@ -352,11 +338,6 @@ function endDrag(): Action | null {
 
 function input(state: State, p: PointerInput): Action | null {
   if (p.kind === 'down') {
-    const btn = buttonAction(state, p)
-    if (btn !== null) {
-      drag = null
-      return btn
-    }
     if (state.solved) return null
     return beginDrag(state, p)
   }

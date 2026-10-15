@@ -377,6 +377,21 @@ export function winnerOf(state: State): Player | 0 {
  * 这种局面确实谁也没占便宜，强行判胜反而不讲道理。
  */
 export function decideByPosition(pieces: readonly Cell[]): Player | 0 {
+  // 第一顺位：比**剩子数**。
+  //
+  // 这一条是必须的，不是锦上添花。实测 400 局随机对局里，终局「较少一方只剩 1 子」
+  // 有 286 局（71.5%），也就是说绝大多数对局结束时局面早就分明——一方已经把对方
+  // 挤到只剩最后一子，只是没能在裁决线内推完。而本函数原先只看棋形（离臂端多近、
+  // 有多暴露），会把这种一目了然的子数优势判给**正在被挤退**的一方，等于奖励挨打。
+  // 症状是 AI 自战 24:6 / 26:4 的诡异偏向。
+  //
+  // 先比子数还有个副作用是好的：它让「谁在推进」成为裁决的主导因素，AI 的 rollout
+  // 信号也随之从「谁的棋形更差」纠正成「谁挤得更狠」，双方不再朝同一个对称目标共振。
+  const n1 = countPieces(pieces, 1)
+  const n2 = countPieces(pieces, 2)
+  if (n1 !== n2) return n1 > n2 ? 1 : 2
+
+  // 第二顺位：子数相同（比如常见的 2:2），再比位置优劣。
   const scoreOfP = (p: Player): number => {
     let sc = 0
     for (let i = 0; i < CELL_COUNT; i++) {
@@ -611,7 +626,8 @@ export function evaluate(state: State, me: Player): number {
  * 双方都把对方推向同一个静态最优点、互相抵消（实测 0/12 全平）。
  * 随机那一半负责打破对称、提供真实的胜负信号；实测随机走法 40/40 都能走到终局，
  * 其中约一半在 120 手之前分出胜负，信号足够用。
- */function rolloutScore(state: State, me: Player, games: number, seedBase: number): number {
+ */
+function rolloutScore(state: State, me: Player, games: number, seedBase: number): number {
   const opp = other(me)
   let score = 0
   for (let g = 0; g < games; g++) {
@@ -632,6 +648,29 @@ export function evaluate(state: State, me: Player): number {
     }
   }
   return score * ROLLOUT_SCALE
+}
+
+/**
+ * rollout 结果的进程内缓存。
+ *
+ * 为什么要缓存：rollout 是 AI 单步开销的绝对大头（60 局 × 每局几十手），
+ * 而对弈过程中同一摆位会被反复问到 —— 静态搜索的候选排序、AI 自战、
+ * 以及测试里反复调 `aiAction`。棋盘只有 13 格，摆位字符串（0/1/2 各占 1 位）
+ * 就是天然的键；不同 seed 的对局各自缓存，互不干扰。
+ *
+ * 只缓存纯函数结果，不影响可复盘性：键里包含 seedBase，相同种子必得相同结果。
+ */
+const rolloutCache = new Map<string, number>()
+
+function cachedRollout(state: State, me: Player, games: number, seedBase: number): number {
+  const key = `${seedBase}:${games}:${me}:${state.pieces.join('')}`
+  const hit = rolloutCache.get(key)
+  if (hit !== undefined) return hit
+  const v = rolloutScore(state, me, games, seedBase)
+  // 简单上限，避免长对局把内存吃满
+  if (rolloutCache.size > 20000) rolloutCache.clear()
+  rolloutCache.set(key, v)
+  return v
 }
 
 /**
@@ -746,15 +785,30 @@ export function bestAction(state: State, me: Player): Action | null {
   for (let k = 0; k < acts.length; k++) {
     if (bandTop - vals[k] > ROLL_BAND) continue
     // 每个候选用不同的种子偏移，避免同一批随机序列被复用导致的假相关
-    roll[k] = rolloutScore(kids[k], me, ROLLOUT_GAMES, seedBase + k * 104729)
+    roll[k] = cachedRollout(kids[k], me, ROLLOUT_GAMES, seedBase + k * 104729)
   }
 
   // ---- 汇总 ----
-  // 对局值必须**压过**静态值，而不是微调它：两方共享同一套静态评估时会产生共振，
-  // 静态分越高反而越平（实测 0/12 全撞平局上限）。对局值来自真实终局，
-  // 是唯一可靠的胜负信号。静态值只作为同分时的次序偏好保留。
+  // 对局值决定「谁能赢」，但静态值要保留否决权：
+  // 静态分差一旦拉大到 W_COUNT 的量级，说明这手棋在枚数/暴露度上就是净亏，
+  // 此时即便 rollout 的采样噪声看起来不错也不该走 —— 实测出现过 AI 明知
+  // eval=-141000 仍然自送一子的情况。所以先做静态否决，再在幸存者里用对局分胜负。
   const combined = new Array<number>(acts.length)
-  for (let k = 0; k < acts.length; k++) combined[k] = roll[k] * 10_000 + vals[k]
+  let veto = -INF
+  for (let k = 0; k < acts.length; k++) if (vals[k] > veto) veto = vals[k]
+  for (let k = 0; k < acts.length; k++) {
+    const kid = kids[k]
+    // 静态分比冠军差超过「两枚棋子」的收益 → 直接出局，不参与对局比较
+    const staleOut = veto - vals[k] > W_COUNT * 2
+    // 硬否决：这一步会把自己的棋子挤出棋盘。
+    // 挤掉自己一子永远是净亏（终局靠的是「把对方挤空」），实测 rollout 的采样噪声
+    // 偶尔会反过来给这种自杀式走法正分，必须在规则层直接禁掉。
+    const selfHarm =
+      kid.last !== null &&
+      kid.last.pushed.some((p) => p.to === OFF_BOARD) &&
+      countPieces(kid.pieces, me) < countPieces(state.pieces, me)
+    combined[k] = staleOut || selfHarm ? -INF : roll[k] * 10_000 + vals[k]
+  }
 
   let top = -INF
   let topAct = best

@@ -92,12 +92,12 @@ function hitCell(x: number, y: number): number {
 
 function statusLine(s: State): [string, string] {
   if (s.over) {
-    if (s.winner === 1) return ['你赢了！', `第 ${s.moves} 手把电脑的棋子挤进了你的底线`]
-    if (s.winner === 2) return ['电脑获胜', `第 ${s.moves} 手你的棋子被挤过了底线`]
-    return ['平局', `走了 ${s.moves} 步，谁也没挤成`]
+    if (s.winner === 1) return ['你赢了！', `第 ${s.moves} 手把电脑的棋子全部挤出棋盘`]
+    if (s.winner === 2) return ['电脑获胜', `第 ${s.moves} 手你的棋子被全部挤出`]
+    return ['平局', `走了 ${s.moves} 步，谁也没占优`]
   }
-  if (s.turn === 1) return ['轮到你', '把电脑的棋子挤到你这一端的底线格']
-  return ['电脑思考中', '它正想办法把你的棋子推过去']
+  if (s.turn === 1) return ['轮到你', '把电脑的棋子全部挤出棋盘']
+  return ['电脑思考中', '它正想办法把你的棋子推出去']
 }
 
 function tipText(s: State): string {

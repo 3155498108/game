@@ -5,6 +5,7 @@ dist/
 
 # 原始需求规格：不随代码公开（项目文档 README/DECISIONS 才是随仓库走的）
 PROMPT.md
+.spec-utf8.md
 
 # 自检用的临时对照页，不属于项目源码
 vp-one.html

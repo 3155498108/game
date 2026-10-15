@@ -213,10 +213,14 @@ interface GameModule<S = any, A = any> extends GameMeta {
 ### 写新游戏时的几个易踩点
 
 - **坐标**：运行时已经帮你换算好了，`PointerInput.x/y` 就是 720×1280 坐标系里的值，不要再乘 scale。
-- **触控目标**：需要点按钮优先用 `controls()`，站点壳会渲染成真正的 DOM 按钮，天然 ≥44px。
-  在 canvas 里自己画按钮时，逻辑坐标下的高度建议 ≥110（最窄缩放下才够 44 CSS px）。
+- **触控目标**：需要点按钮**一律用 `controls()`**，站点壳会渲染成真正的 DOM 按钮，天然 ≥44px。
+  **不要在画布上重复自绘 `controls()` 已经声明的控件**——站点壳还会自动追加一个「新的一局」，
+  自绘一遍等于同一操作出现两次（rush-hour 就因此在真机上出现 6 个重复按钮，见 `DECISIONS.md` 4.5）。
+  确实非要在 canvas 里画按钮（例如画布内联的游戏元素）时，逻辑坐标下的高度建议 ≥110（最窄缩放下才够 44 CSS px）。
 - **不要变形**：按 720×1280 的逻辑坐标作画即可，运行时负责等比缩放居中，多余区域自动填黑边。
 - **`noUnusedLocals`**：tsconfig 开了这个开关，未使用的变量和参数都会让构建失败。
+  看到「某 import 未使用」时顺手查一下它是不是被删掉的调用留下的——这往往是删代码只删了一半的信号。
+- **规格里显式写出的约束要逐条勾**：`link-six` 能检测「连到已消除的球」却漏了规格明确要求的「不允许自交」，就是靠逐条核对才发现的（`DECISIONS.md` 4.8）。
 - **音效**：在 `effects(prev, next)` 里根据前后状态差异返回 `{ kind: 'sound', name: 'place' }` 之类，不要在 `reduce` 里直接调播放函数。
 
 ---
@@ -247,8 +251,26 @@ interface GameModule<S = any, A = any> extends GameMeta {
 
 ## 已实现游戏
 
+**共 38 款**，与规格逐条对应。
+
 | 批次 | 游戏 |
 |---|---|
 | 第 1 批（验证架构） | 四子棋、比大小、记忆卡牌、数字华容道、猜颜色 |
+| 第 2 批（牌类） | 二十一点、接龙 gops、大富豪 daifugo、翻牌接龙 last-card、连环新接龙 gops-chain、花牌配对、快艇骰子 |
+| 第 3 批（棋盘） | 五子棋、国际跳棋、画点成框、兔猎犬、中国跳棋、黑白棋、英国十字戏 cross-xi |
+| 第 4 批（益智） | 六连珠 link-six、章鱼烧 takoyaki、滑块解锁 rush-hour、麻将对对消 mahjong-match |
+| 第 5 批（迷你） | 坦克对决 tank-duel、轨道车 rail-cart、弹戏 pachinko、猪尾巴 pig-tail |
+| 第 6 批（休闲动作） | 钓鱼 fishing、射靶 target-shooting、玩具足球 toy-football、玩具棒球 toy-baseball、玩具网球 toy-tennis、玩具拳击 toy-boxing、玩具冰壶 toy-curling、高尔夫球 golf |
+| 第 7 批（共享渲染重活） | 台球简化版 pool-lite、保龄球简化版 bowling-lite |
 
-其余批次的规划见 `PROMPT.md`，不实现的游戏及原因见 `DECISIONS.md`。
+每款一个目录 `src/games/<id>/`，固定 4 个文件（`meta.ts` / `rules.ts` / `index.ts` / `rules.test.ts`），新增游戏不改站点壳任何代码（注册表用 `import.meta.glob` 自动发现）。
+
+**验收现状**（全部实测通过）：
+
+- `npm test` → **38 个测试文件 / 1342 个用例全绿**
+- `npx tsc --noEmit` → **零错误**
+- `npm run build` → 成功；**站点壳主块 15.2 KB gzip**（上限 50 KB），41 个游戏块各 4.5~6 KB gzip 按需加载
+- **38 款在 375×667 与 1440×900 两个视口下均无横向溢出**，顶栏/操作区跟随画面宽度居中
+- `rules.ts` 全局无 `Math.random` / `Date` / `performance`（仅注释中出现说明性文字）
+
+实现过程中踩过的坑——真 bug（坦克对决 47% 对局死循环）、假 bug、以及「测试写错 vs 代码写错」的归因方法——都记在 `DECISIONS.md` 第四节；不实现的 7 类游戏及原因见第一节。
