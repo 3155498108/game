@@ -105,8 +105,8 @@ export const STALL_SPEED = 40
 export const STALL_TICKS = 45
 /** 场地左右/上下内缩：任何在场的球与瓶心都不会越过 WALL_MARGIN + 半径 */
 export const WALL_MARGIN = 8
-/** fallen 只保留最近若干条（纯渲染用，防止无限增长） */
-export const FALLEN_KEEP = 48
+/** fallen 只保留最近若干条（纯渲染用，防止无限增长；重新摆瓶时整体清空） */
+export const FALLEN_KEEP = 64
 
 // ---------------------------------------------------------------- 状态类型
 export type Phase = 'aim' | 'rolling' | 'done'
@@ -537,6 +537,8 @@ function endRoll(s: State): State {
 function swing(state: State): State {
   if (state.phase !== 'aim') return state
   const rng = new Rng(state.rng)
+  // 重新摆瓶时清空上一批倒瓶记录：fallen 只反映「本架瓶」，
+  // 渲染不会残留前几局的鬼影，effects 也能用长度差直接数出本球倒了几瓶。
   const pins = state.rackUp ? rack(rng) : state.pins
   const s = throwSpeed(state.power)
   const a = clampAngle(state.angle)
@@ -544,6 +546,7 @@ function swing(state: State): State {
     ...state,
     rng: rng.s,
     pins,
+    fallen: state.rackUp ? [] : state.fallen,
     rackUp: false,
     ball: { x: BALL_START_X, y: BALL_START_Y, vx: s * Math.sin(a), vy: -s * Math.cos(a) },
     phase: 'rolling',

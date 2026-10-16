@@ -416,4 +416,38 @@ bowling-lite 那 7 条红灯则是**真问题**：规格没写力度下限，实
 
 **教训：写下「违反契约」之前，先把契约原文读一遍。** 一个动作「没有效果」和「不合契约」是两回事，前者常常是驱动的问题。
 
+### 4.17 差点被「已经结束的 worker」推翻：Token Plan 额度恢复会唤醒旧会话
+
+38 款全部交付、1421 条用例全绿、已推送 GitHub 之后的第二天早上，`git status` 忽然多出 11 个游戏文件被改动：
+
+```
+ src/games/chinese-checkers/rules.ts          | 808 +++++-----
+ src/games/golf/rules.ts                      | 967 +++++++++---
+ src/games/chinese-checkers/rules.test.ts     | 1002 +++++++-------
+ src/games/toy-football/index.ts              | 531 +++++++----
+ ……
+ src/games/takoyaki/smoke.test.ts             | 新增的野文件
+```
+
+`git diff -w`（忽略空白）之后仍然是整文件重写，所以**不是行尾抖动，是真的被重新实现了一遍**。
+
+**根因**：这些改动来自第 2~7 批派出去的 worker 会话。它们因为 Token Plan 额度耗尽而中断，状态停在 `idle` / `error`（`errorCode: 42212`）。**额度一恢复，运行时会把这些会话重新唤醒**，让它们继续当年被打断的任务——而那些任务（「实现 golf」「完成 toy-football 渲染层」）早在几百轮之前就做完了。醒来之后的它们，手里拿的是一份过期的、甚至已经被推翻的方案。
+
+最典型的例子：bowling-lite 那个 worker 在会话被判定「已结束」之后又醒了，把 `bowling-lite/rules.ts` 改了 7 行（这 7 行本身是对的——重新摆瓶时清空 `fallen`——但当时并不知道）。chinese-checkers / golf / toy-curling / toy-football 四个 worker 则是整目录重写。takoyaki 的 worker 甚至在游戏目录里新建了一个 `smoke.test.ts`——它在试图把全站冒烟测试复制一份到自己的目录下。
+
+**处置**：
+
+1. `git status` 发现异常后**先查会话列表**（`mavis session list`），确认是被唤醒的 worker 所为；
+2. 把**确认动过手的 8 个会话全部 `archived`**（chinese-checkers / golf / toy-football / toy-curling 各两个 + bowling-lite + takoyaki），正在跑的那个先 `session send --force_steer` 下停令再归档；
+3. `git checkout --` 把 5 款游戏整体还原到 `acf8877`（已推送的干净状态），删掉野文件；
+4. 全量复测：`tsc` 零错误、**39 文件 / 1421 用例全绿**、构建通过、壳主块 15.2 KB gzip——与被改写前逐项一致，确认还原无损。
+
+**教训（三条）**：
+
+- **「任务已结束」不等于「会话已停」**。`task_query` 报告 succeeded/failed 之后，子会话可能只是「额度用尽所以停了」。额度恢复事件会重新触发它们。**多 worker 项目收尾时，必须显式归档子会话**，不能只看任务状态。
+- **代码完成并推送 git 之后，git 就是唯一可信的还原点**。这次能无损恢复，全靠每个批次都单独提交、工作区随时干净；如果当时还有一堆未提交的改动混在里面，就分不清哪些是成果、哪些是回滚了。
+- **发现工作区被改动，第一件事是查来源，第二件事才是还原**。直接 `git checkout` 可能正好把别人的正经成果一起冲掉（bowling-lite 那 7 行就是这种「看起来像垃圾、其实是改进」的情况）。
+
+本项目 `E:\jsjzc\game` 底下还有 **40+ 个未归档的历史 worker 会话**残留。它们这轮没被唤醒，但如果 Token Plan 额度再次恢复，有可能重演同样的事。建议在桌面端把这批会话批量归档。
+
 

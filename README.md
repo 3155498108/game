@@ -277,9 +277,9 @@ interface GameModule<S = any, A = any> extends GameMeta {
 
 - `npm test` → **39 个测试文件 / 1421 个用例全绿**（38 份游戏单测 + 1 份全站冒烟）
 - `npx tsc --noEmit` → **零错误**
-- `npm run build` → 成功；**站点壳主块 15.6 KB gzip**（上限 50 KB），41 个游戏块各 3.5~6 KB gzip 按需加载
+- `npm run build` → 成功；**站点壳主块 15.2 KB gzip**（上限 50 KB），41 个游戏块按需加载，全部 JS 合计 162 KB gzip
 - **38 款在 375×667 与 1440×900 两个视口下均无横向溢出**，顶栏/操作区跟随画面宽度居中
 - `rules.ts` 全局无 `Math.random` / `Date` / `performance`（仅注释中出现说明性文字）
 - 全站冒烟（`src/smoke.test.ts`）：38 款的 `render` / `effects` / `controls` 接线在整局每一步都不抛错，通用驱动能推完 25/38 款
 
-实现过程中踩过的坑——真 bug（坦克对决 47% 对局死循环、章鱼烧渲染崩溃）、假 bug（冒烟测试自己有 5 个坑）、以及「测试写错 vs 代码写错」的归因方法——都记在 `DECISIONS.md` 第四节；不实现的 7 类游戏及原因见第一节。
+实现过程中踩过的坑——真 bug（坦克对决 47% 对局死循环、章鱼烧渲染崩溃）、假 bug（冒烟测试自己有 5 个坑）、以及「测试写错 vs 代码写错」「已完成任务 ≠ 已停止会话」这两条归因方法——都记在 `DECISIONS.md` 第四节；不实现的 7 类游戏及原因见第一节。
