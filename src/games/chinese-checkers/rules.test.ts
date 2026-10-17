@@ -248,7 +248,7 @@ describe('滑行', () => {
     expect(reduce(s, { type: 'move', from: idAt(0, 0), to: idAt(1, 0), path: [idAt(0, 0), idAt(1, 0)] })).toBe(s)
   })
 
-  it('select 只接受能动��己方子，clear 复位选中', () => {
+  it('select 只接受能走动的己方子，clear 复位选中', () => {
     // (0,0) 被 6 个己方子围死：中间必须是敌子才能跳，所以它既滑不动也跳不了
     const s = stateWith({ '0,0': 1, '1,0': 1, '0,1': 1, '1,-1': 1, '0,-1': 1, '-1,0': 1, '-1,1': 1, '3,0': 1 })
     expect(movesFrom(s.cells, idAt(0, 0), 1).length).toBe(0)

@@ -267,6 +267,55 @@ describe('全站冒烟：43 款都要能跑起来', () => {
     }
   })
 
+  it('玩法介绍齐全：43 款都写了 howto，每条都是一句能单独看懂的中文', () => {
+    const metas = Object.values(metaModules)
+    const missing = metas.filter((m) => !m.howto || m.howto.length === 0).map((m) => m.id)
+    expect(missing, `这几款没写玩法介绍：${missing.join(' / ')}`).toEqual([])
+
+    for (const m of metas) {
+      const steps = m.howto!
+      // 3~6 条：太短不算介绍，太长没人看得下去
+      expect(steps.length, `${m.id} 的玩法介绍有 ${steps.length} 条`).toBeGreaterThanOrEqual(3)
+      expect(steps.length, `${m.id} 的玩法介绍有 ${steps.length} 条`).toBeLessThanOrEqual(6)
+      for (const [i, s] of steps.entries()) {
+        expect(typeof s, `${m.id} 第 ${i + 1} 条不是字符串`).toBe('string')
+        const t = s.trim()
+        expect(t.length, `${m.id} 第 ${i + 1} 条是空的`).toBeGreaterThan(6)
+        expect(t.length, `${m.id} 第 ${i + 1} 条太长（${t.length} 字）`).toBeLessThanOrEqual(40)
+        expect(t.endsWith('。'), `${m.id} 第 ${i + 1} 条应以句号结尾`).toBe(true)
+        // 写法是给玩家看的操作说明，不是给维护者看的实现说明
+        expect(/[{}<>;]|[_$]\w|=\s*\d/.test(t), `${m.id} 第 ${i + 1} 条混进了实现细节：${t}`).toBe(false)
+      }
+      // 玩法介绍不能只是把 summary 重抄一遍
+      expect(steps.join(''), `${m.id} 的玩法介绍和 summary 完全重复`).not.toBe(m.summary)
+    }
+  })
+
+  it.each(IDS.map((id) => [id] as const))('回合制游戏：AI 不会替玩家连走（壳层契约）', async (id) => {
+    // 契约（core/types.ts 的 aiAction 注释）：**轮到 AI 时才返回动作，否则返回 null**。
+    // 违反它的后果是灾难性的：壳层每落一个子就挂一次 AI 定时器，AI 若在玩家回合也出手，
+    // 就会两边都替玩家下，玩家从头到尾插不上手（狐犬棋曾因此完全无法操控）。
+    //
+    // 判据：走完 AI 的第一手之后，**紧接着的第二手必须是 null** ——
+    // 只要不是 null，就说明 AI 连着替同一局走了两步，中间没有留出玩家的回合。
+    //
+    // 实时游戏（导出 tick，没有「回合」这回事）不适用：它们的 AI 本来就每帧出手。
+    const g = await LOADERS.get(id)!()
+    if (!g.aiAction || g.tick) return
+
+    const s0 = g.create(20260917)
+    const a1 = g.aiAction(s0)
+    if (a1 === null || a1 === undefined) return // 开局就轮到玩家，天然合规
+
+    const s1 = g.reduce(s0, a1)
+    expect(s1).not.toBe(s0)
+    const a2 = g.aiAction(s1)
+    expect(
+      a2,
+      `${id}：AI 在开局连走两步（第一步 ${JSON.stringify(a1)}，第二步 ${JSON.stringify(a2)}），玩家没有回合`,
+    ).toBeNull()
+  })
+
   it.each(IDS.map((id) => [id] as const))('%s 接线完好：全程不抛错、状态真的在推进', async (id) => {
     const g = await LOADERS.get(id)!()
 

@@ -109,6 +109,18 @@ body.playing {
   font-size: 20px;
 }
 
+/* 「玩法」是两个字而不是图标，所以不能跟 .btn.icon 挤同一个方形规格：
+   44px 见方放不下两个汉字，硬塞就会被压到 40px 以下，丢掉触控目标的底线。
+   nowrap 同样必须写：不写的话这两个字会折成上下两行，按钮高度直接翻倍。 */
+.btn.icon.howto-btn {
+  min-width: 48px;
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* ---------------- 首页 ---------------- */
 
 .home {
@@ -426,6 +438,105 @@ body.playing {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
   pointer-events: none;
   z-index: 3;
+}
+
+/* 玩法介绍面板：盖在画面之上，不占布局高度 */
+.howto {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(8, 17, 30, 0.92);
+  z-index: 4;
+}
+
+.howto[hidden] {
+  display: none;
+}
+
+.howto-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  padding: 20px 18px 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 正文自己滚，按钮留在卡片底部。
+   不这么做的后果很直接：步骤一多，正文就把「知道了」顶到滚动区外面，
+   玩家要么滚到底才能关、要么按返回键——一个介绍面板不该给用户出这种难题。 */
+.howto-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.howto-card h2 {
+  margin: 0 0 10px;
+  font-size: 19px;
+  color: var(--fg);
+}
+
+.howto-sum {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--accent);
+}
+
+.howto-steps {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+
+.howto-steps li {
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--fg);
+}
+
+.howto-steps li::marker {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.howto-empty {
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: var(--dim);
+}
+
+.howto-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+
+.howto-tags span {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* 常驻底部：见 .howto-body 的说明 */
+.howto-close {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 14px;
 }
 
 /* 横竖屏提示层 */

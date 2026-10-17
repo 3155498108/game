@@ -10,6 +10,12 @@ export const meta: GameMeta = {
   orientation: 'portrait',
   players: 'ai',
   summary: '同花色相邻才能接，大小王当万能牌，先出完者胜。',
+  howto: [
+    '只有同花色且点数相邻的牌才能接上。',
+    '大小王是万能牌，既能当任意点数，也能当任意花色。',
+    '轮到你时打出能接的牌；场上有能接的牌却不出，这张会被罚进手里。',
+    '先把手牌出完的一方获胜。',
+  ],
 }
 
 export default meta

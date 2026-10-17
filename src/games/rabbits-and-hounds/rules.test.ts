@@ -412,6 +412,38 @@ describe('选中与悬停', () => {
 })
 
 describe('AI', () => {
+  /**
+   * 自对弈入口：**对双方都生效**，与「谁来走」无关。
+   *
+   * 不能用 `aiAction`：那是给站点壳的契约入口，只在狐狸回合出手
+   * （壳层每落一子就挂一次定时器，AI 若在玩家回合也返回走法就会替玩家把棋走光）。
+   * 自对弈与「测试兔子方 AI 会不会封死狐狸」要的是不带门禁的搜索入口。
+   */
+  function bestOf(state: State): Action {
+    const info = aiSearch(state)
+    expect(info).not.toBeNull()
+    return info!.action
+  }
+
+  it('aiAction 只在狐狸回合出手：玩家回合必须返回 null', () => {
+    // 这条是壳层契约的回归测试 —— 曾经漏门禁，导致 AI 接管双方、玩家完全无法操控
+    const s0 = create(7)
+    expect(s0.turn).toBe('rabbit')
+    expect(aiAction(s0)).toBeNull()
+    expect(bestOf(s0)).not.toBeNull()
+
+    const s1 = reduce(s0, bestOf(s0))
+    expect(s1.turn).toBe('fox')
+    expect(aiAction(s1)).not.toBeNull()
+
+    const s2 = reduce(s1, aiAction(s1)!)
+    expect(s2.turn).toBe('rabbit')
+    expect(aiAction(s2)).toBeNull()
+
+    // 终局一律 null
+    expect(aiAction({ ...create(7), over: true })).toBeNull()
+  })
+
   it('终局时 aiAction 返回 null', () => {
     const s = stateWith(foxAndDog(idx(0, 3), idx(4, 6)).board, 'fox')
     expect(aiAction(s)).toBeNull()
@@ -458,11 +490,10 @@ describe('AI', () => {
       while (!s.over && guard++ < MOVE_LIMIT + 5) {
         const legal = legalActions(s)
         expect(legal.length).toBeGreaterThan(0)
-        const a = aiAction(s)
-        expect(a).not.toBeNull()
-        expect(legal).toContainEqual(a!)
+        const a = bestOf(s)
+        expect(legal).toContainEqual(a)
         const before = s.turn
-        s = reduce(s, a!)
+        s = reduce(s, a)
         if (!s.over) expect(s.turn).toBe(before === 'fox' ? 'rabbit' : 'fox')
       }
       expect(s.over).toBe(true)
@@ -477,9 +508,7 @@ describe('AI', () => {
       let s = create(seed * 104729)
       let guard = 0
       while (!s.over && guard++ <= MOVE_LIMIT) {
-        const a = aiAction(s)
-        expect(a).not.toBeNull()
-        s = reduce(s, a!)
+        s = reduce(s, bestOf(s))
       }
       expect(s.over).toBe(true)
       expect(s.moves).toBeLessThanOrEqual(MOVE_LIMIT)
@@ -498,9 +527,9 @@ describe('AI', () => {
     const s = stateWith(board, 'rabbit')
     expect(s.over).toBe(false)
     expect(slidesFrom(board, idx(4, 3))).toEqual([idx(4, 0)])
-    const a = aiAction(s)
-    expect(legalActions(s)).toContainEqual(a!)
-    const n = reduce(s, a!)
+    const a = bestOf(s)
+    expect(legalActions(s)).toContainEqual(a)
+    const n = reduce(s, a)
     expect(n.winner).toBe('rabbit')
     expect(foxStuck(n.board)).toBe(true)
   })
@@ -564,12 +593,12 @@ describe('AI', () => {
       let guard = 0
       while (!s.over && guard++ <= MOVE_LIMIT) {
         const t0 = performance.now()
-        const a = aiAction(s)
+        const a = bestOf(s)
         const dt = performance.now() - t0
         worst = Math.max(worst, dt)
         total += dt
         n++
-        s = reduce(s, a!)
+        s = reduce(s, a)
       }
     }
     const avg = total / n

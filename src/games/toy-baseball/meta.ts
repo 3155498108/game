@@ -13,6 +13,13 @@ export const meta: GameMeta = {
   orientation: 'landscape',
   players: 1,
   summary: '十球之内盯住击球区出现的判定窗口点击挥棒，时机越准打得越远。',
+  howto: [
+    '球进入击球区时，会出现一小段判定窗口。',
+    '在窗口内点画面挥棒，打得越准球飞得越远。',
+    '早半拍或晚半拍都会挥空，白白浪费一球。',
+    '挥出的距离越远得分越高。',
+    '全程十球机会，用完即结束。',
+  ],
 }
 
 export default meta

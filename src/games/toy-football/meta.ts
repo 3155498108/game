@@ -10,6 +10,13 @@ export const meta: GameMeta = {
   orientation: 'landscape',
   players: 1,
   summary: '拖动滑条设定力度与角度，点按出脚，十脚之内看你能踢进几个球。',
+  howto: [
+    '先拖动滑条设定射门力度。',
+    '再拖动方向滑条设定角度。',
+    '点「出脚」完成射门，球会按设定轨迹飞出。',
+    '球进对方球门得高分，踢偏了不扣分。',
+    '全程十脚机会，用完即结束。',
+  ],
 }
 
 export default meta

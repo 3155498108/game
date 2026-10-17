@@ -301,7 +301,9 @@ function onPaddleHit(s: State, side: Side, r: Rng): State {
     rally,
     bestRally: Math.max(s.bestRally, rally),
     lastHitter: side,
-    missed: 0,
+    // 这里必须回到 null 而不是 0：`missed` 的语义是「哪一方漏接了，null = 还没人漏接」。
+    // 写成 0 会让 AI 的落点预测（landingX 见 s.missed !== null 就放弃）在第一次击球后永久失效。
+    missed: null,
     bvx: speed * Math.sin(a),
     // 玩家在下方，向下发球；电脑在上方，向上发球
     bvy: (side === 0 ? -1 : 1) * speed * Math.cos(a),

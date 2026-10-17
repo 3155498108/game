@@ -4,13 +4,10 @@ import { GAMES } from './registry'
 import { formatBest, readBest, readJSON, writeJSON } from './storage'
 import { dailyGame, todayLabel, todaySeed } from './daily'
 import { canSignIn, claimSignin, formatCoins, readWallet, signinAmount } from './coins'
+import { escapeHtml as esc } from './html'
 
 const FILTER_KEY = 'gs:settings:filter'
 const PLAYERS_LABEL: Record<string, string> = { '1': '单人', '2': '双人', ai: '人机' }
-
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
-}
 
 function card(g: GameMeta): string {
   const best = readBest(g.id)

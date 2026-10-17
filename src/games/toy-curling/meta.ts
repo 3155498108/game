@@ -13,6 +13,13 @@ export const meta: GameMeta = {
   orientation: 'landscape',
   players: 'ai',
   summary: '顶部视角冰道：按住蓄力、左右调向，松手出壶。冰壶互相碰撞传递动量，停在圆心越近分越高，多轮累计与 AI 决胜负。',
+  howto: [
+    '按住画面蓄力决定冰壶滑出的力度。',
+    '蓄力时左右拖动调整出壶方向。',
+    '松手出壶，冰壶沿冰道滑行并与其他冰壶碰撞传递动量。',
+    '停下来离圆心越近，得的分越高。',
+    '多轮累计总分，与 AI 决胜负。',
+  ],
 }
 
 export default meta

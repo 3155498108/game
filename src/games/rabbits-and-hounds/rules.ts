@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 兔子和猎犬（狐犬棋 / Fox and Hounds）规则 —— 纯逻辑，零 DOM 依赖，可在 node 环境单测。
  *
  * 坐标口径（渲染与输入共用）：
@@ -436,9 +436,15 @@ export function aiSearch(state: State, maxDepth = 4, budget: readonly number[] =
   return best
 }
 
-/** 轮到谁就走谁；终局返回 null。走法必定来自 legalActions。 */
+/**
+ * 电脑（执狐狸）的动作。**不是狐狸回合、或已终局时必须返回 null** ——
+ * 这是 GameModule 对 aiAction 的硬契约：壳层每落一个子就会挂一次定时器，
+ * 一旦这里在玩家回合也返回走法，AI 就会替玩家把棋子全走光，玩家永远插不上手。
+ *
+ * `aiSearch` 本身对双方通用（自对弈测试用），门禁只加在这一层。
+ */
 export function aiAction(state: State): Action | null {
-  if (state.over) return null
+  if (state.over || state.turn !== 'fox') return null
   const info = aiSearch(state)
   return info === null ? null : info.action
 }

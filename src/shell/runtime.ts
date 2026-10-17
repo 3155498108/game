@@ -13,6 +13,7 @@ import { anyActive, resetAnims } from '../render/anim'
 import { burst, clearFx, drawFx, flash, fxActive, shake, shakeOffset, updateFx } from '../render/fx'
 import { isMuted, play, setMuted, unlockAudio } from '../render/audio'
 import { formatBest, readBest, readJSON, submitBest, writeJSON } from './storage'
+import { escapeHtml as esc } from './html'
 import { BET_STEPS, formatCoins, formatDelta, readBet, readWallet, settle, writeBet, writeWallet } from './coins'
 
 export const DPR_CAP = 2
@@ -36,7 +37,7 @@ export interface PlayElements {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
+  return esc(s)
 }
 
 export class Runtime<S = unknown, A = unknown> {

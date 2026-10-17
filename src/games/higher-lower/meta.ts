@@ -10,6 +10,12 @@ export const meta: GameMeta = {
   orientation: 'portrait',
   players: 1,
   summary: '翻开一张牌，猜下一张更大还是更小，一路猜到底。',
+  howto: [
+    '开局翻开一张牌当基准，猜下一张比它大还是比它小。',
+    '猜对进入下一轮并累计分数，猜错立刻结束。',
+    '连对越多分数越高，中途猜错则前面累积的分数作废。',
+    'A 最小、K 最大；点数相同算「小」。',
+  ],
 }
 
 export default meta

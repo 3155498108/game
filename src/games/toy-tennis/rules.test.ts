@@ -1,7 +1,8 @@
 /**
  * 玩具网球规则单测（node 环境，无 DOM）
  * 覆盖：边界反弹 / 球速递增与上限 / 漏接出界得分 / 先得 7 分终局 /
- *      AI 动作合法性 / 双方 AI 必然终局 / 单步耗时 / 同种子复现 / reduce 不改入参
+ *      AI 动作合法性 / AI 追球与持续对拉（回归）/ 出界归属 /
+ *      双方 AI 必然终局 / 单步耗时 / 同种子复现 / reduce 不改入参
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -125,6 +126,94 @@ describe('玩具网球 · 规则', () => {
       steps++
     }
     expect(steps).toBeGreaterThan(10)
+  })
+
+  it('球被接住后 missed 回到 null（回归：曾写成 0，AI 落点预测从此永久失效）', () => {
+    // 击球只代表「球还在飞」，不代表哪一方漏接了。
+    // 一旦这里写回 0，landingX 的 `missed !== null` 就会永远成立，
+    // 电脑球拍会退回中线从此不再追球 —— 表现为「只有发球会动，之后不动了」。
+    const playerHit = reduce(playing({ bx: 360, by: PLAYER_Y - 5, bvx: 0, bvy: 7, rally: 2 }), {
+      type: 'tick',
+      steps: 1,
+    })
+    expect(playerHit.rally).toBe(3)
+    expect(playerHit.lastHitter).toBe(0)
+    expect(playerHit.missed).toBeNull()
+    expect(playerHit.bvy).toBeLessThan(0) // 打回去是往上的
+
+    const aiHit = reduce(playing({ bx: 360, by: AI_Y + 5, bvx: 0, bvy: -7, rally: 2 }), {
+      type: 'tick',
+      steps: 1,
+    })
+    expect(aiHit.rally).toBe(3)
+    expect(aiHit.lastHitter).toBe(1)
+    expect(aiHit.missed).toBeNull()
+    expect(aiHit.bvy).toBeGreaterThan(0) // 打回去是往下的
+  })
+
+  it('AI 会真的追球：斜向来球时球拍离开中线并把球打回去（回归：曾 400 帧全是 dir 0）', () => {
+    let s = playing({ bx: 360, by: 620, bvx: -6, bvy: -7, px: 360, ax: 360 })
+    const startAx = s.ax
+    let moved = 0
+    let excursion = 0
+    let hitBack = false
+    for (let i = 0; i < 90 && s.phase === 'play'; i++) {
+      const a = aiAction(s)
+      if (a) {
+        const n = reduce(s, a)
+        if (n !== s) moved++
+        s = n
+      }
+      excursion = Math.max(excursion, Math.abs(s.ax - startAx))
+      const rallyBefore = s.rally
+      s = reduce(s, { type: 'tick', steps: 1 })
+      if (s.rally > rallyBefore && s.lastHitter === 1) hitBack = true
+    }
+    expect(moved).toBeGreaterThan(3)
+    // 球拍确实被吸引到了预测落点附近，而不是钉在中线
+    expect(excursion).toBeGreaterThan(100)
+    expect(hitBack).toBe(true)
+    // 打回去之后球是往下的（bvy > 0），不是原地卡住
+    expect(s.bvy).toBeGreaterThan(0)
+  })
+
+  it('一整局里 AI 会反复击球，而不是只在发球时动一下', () => {
+    let s = create(31337)
+    let aiHits = 0
+    let guard = 0
+    while (s.phase !== 'over' && guard++ < 60_000) {
+      const before = s.rally
+      const a = aiAction(s)
+      if (a) s = reduce(s, a)
+      s = reduce(s, { type: 'tick', steps: 1 })
+      if (s.rally > before && s.lastHitter === 1) aiHits++
+      // 玩家是超人：每帧贴住球
+      s = reduce(s, { type: 'seek', x: s.bx })
+    }
+    expect(s.phase).toBe('over')
+    expect(aiHits).toBeGreaterThanOrEqual(5)
+  })
+
+  it('出界判给「球飞出去的那一侧」丢分，而不是永远判玩家输（回归：随 missed 一起坏掉）', () => {
+    // 球还在电脑这半场上方就已经飞出左边线 → 电脑丢分，玩家得分
+    const aiOut = reduce(playing({ bx: 5, by: 100, bvx: -9, bvy: -6, px: 360, ax: 200, rally: 3 }), {
+      type: 'tick',
+      steps: 1,
+    })
+    expect(aiOut.phase).toBe('serve')
+    expect(aiOut.lastReason).toBe('out')
+    expect(aiOut.scoreP).toBe(1)
+    expect(aiOut.scoreA).toBe(0)
+
+    // 对称地：球在玩家这半场飞出右边线 → 玩家丢分
+    const pOut = reduce(playing({ bx: 715, by: 900, bvx: 9, bvy: 6, px: 200, ax: 360, rally: 3 }), {
+      type: 'tick',
+      steps: 1,
+    })
+    expect(pOut.phase).toBe('serve')
+    expect(pOut.lastReason).toBe('out')
+    expect(pOut.scoreP).toBe(0)
+    expect(pOut.scoreA).toBe(1)
   })
 
   it('双方 AI 对战必然走到终局并分出胜负（不卡死）', () => {
