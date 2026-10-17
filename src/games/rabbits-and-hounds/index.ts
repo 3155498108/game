@@ -1,14 +1,13 @@
 /**
- * 兔子和猎犬：渲染 + 输入映射。
+ * 狐犬棋（Hare and Hounds）：渲染 + 输入映射。
  * 规则全在 rules.ts（纯逻辑），本文件只负责把状态画到 Canvas、把指针翻译成 action。
  *
  * 坐标与裁决（与 rules.ts 一一对应）：
- * - 棋盘 7 行 × 9 列：COLS=9 从左到右、ROWS=7 从上到下，idx(c,r) = r*COLS+c
- * - 狐狸起始格 = 第 3 行（中心行）第 4 列（中心列）
- * - 狐狸的胜利格 = 第 0 列或第 8 列上的任意格，且该格与「狗」不正交相邻
- * - 滑行 = 沿东西南北 + 两条 45° 对角线（共 8 条射线）落到该方向的第一个空格；
- *   路径上的棋子只阻挡落点、不阻挡穿过（规格「狗可跳棋子」的口径）
- * - 胜负：到底线（不挨着狗）→ 狐狸胜；任一方向都滑不出 → 兔子胜；满 MOVE_LIMIT 步 → 平局
+ * - 棋盘 5 行 × 7 列：COLS=7 从左到右、ROWS=5 从上到下，idx(c,r) = r*COLS+c
+ * - 只有 27 个点真实存在（ROW_MASK）：中间三行铺满 7 列，最上/最下两行只有中间 3 列，
+ *   于是左右两端各收成一个尖角，而左端正好 3 点 —— 3 只猎犬一字排开就是一道无缝墙
+ * - 走子 = 走到**相邻一个空棋点**（横/竖/斜），猎犬额外禁止后退（目标列不能更小）
+ * - 胜负：围死兔子 → 猎犬胜；兔子越过犬阵最前缘 → 兔子胜；见 rules.ts 的 winnerOf
  *
  * 动画说明：棋子移动动画走 render/anim.ts 旁路（progressSince），
  * 落点结果已经由 state 定好，不存在「动画中不可点击」的状态。
@@ -19,22 +18,23 @@ import { progressSince } from '../../render/anim'
 import meta from './meta'
 import {
   COLS,
-  DOG,
   EMPTY,
-  FOX,
+  HARE,
+  HOUND,
   MOVE_LIMIT,
-  RABBIT,
   ROWS,
+  STALL_LIMIT,
   aiAction,
-  adjacentToHound,
-  canSlide,
+  canStep,
   colOf,
   create,
   idx,
-  isExitCell,
+  isPlayable,
+  neighborsOf,
+  rearmostHoundCol,
   reduce,
   rowOf,
-  slidesFrom,
+  stepsFrom,
   type Action,
   type Piece,
   type State,
@@ -43,15 +43,15 @@ import {
 const VW = 720
 const VH = 1280
 /** 单格边长（逻辑像素），远大于 44 的触控下限 */
-const CELL = 72
+const CELL = 96
 const BOARD_W = COLS * CELL
 const BOARD_H = ROWS * CELL
 const BOARD_X = (VW - BOARD_W) / 2
 const BOARD_Y = 300
 /** 棋子半径 */
-const PIECE_R = 26
-/** 一次滑行的动画时长 */
-const SLIDE_MS = 190
+const PIECE_R = 34
+/** 走一步的动画时长 */
+const STEP_MS = 160
 
 const cellCenter = (cell: number): [number, number] => [
   BOARD_X + colOf(cell) * CELL + CELL / 2,
@@ -60,34 +60,38 @@ const cellCenter = (cell: number): [number, number] => [
 
 const PIECE_COLOR: Record<Piece, string> = {
   [EMPTY]: '#ffffff',
-  [RABBIT]: '#f2f6fb',
-  [FOX]: '#ff8a3d',
-  [DOG]: '#4aa3ff',
+  [HOUND]: '#4aa3ff',
+  [HARE]: '#f2f6fb',
 }
+
+const HOUND_COLOR = PIECE_COLOR[HOUND]
+const HARE_COLOR = PIECE_COLOR[HARE]
 
 function hitCell(x: number, y: number): number {
   const c = Math.floor((x - BOARD_X) / CELL)
   const r = Math.floor((y - BOARD_Y) / CELL)
   if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return -1
-  return idx(c, r)
+  return isPlayable(idx(c, r)) ? idx(c, r) : -1
 }
 
 // ---------------- 文案 ----------------
 
 function statusText(s: State): [string, string] {
   if (s.over) {
-    if (s.winner === 'rabbit') return ['你赢了！', `狐狸在第 ${s.moves} 步被围死`]
-    if (s.winner === 'fox') return ['狐狸逃走了', `电脑在第 ${s.moves} 步滑到底线`]
+    if (s.winner === 'hounds') return ['围住了！', `第 ${s.moves} 步把兔子逼得无路可走`]
+    if (s.winner === 'hare') return ['兔子绕出去了', `第 ${s.moves} 步绕到了你犬阵的左后方`]
     return ['平局', `${MOVE_LIMIT} 步内谁也没能成功`]
   }
-  if (s.turn === 'rabbit') return ['轮到你', '兔子先走，把狐狸的出口一个个堵上']
-  return ['狐狸思考中', '它想抢到底线，而且不能挨着狗']
+  if (s.turn === 'hounds') return ['轮到你', '猎犬先走：点一只犬，再点高亮的一格']
+  return ['兔子在绕后路', '它想绕到你犬阵的左后方（绿区）']
 }
 
 function tipText(s: State): string {
   if (s.over) return '点「新的一局」再来一次'
-  if (s.turn !== 'rabbit') return '电脑正在算最佳的一步…'
-  return s.selected >= 0 ? '点高亮格完成滑行，再点空处取消' : '点自己的兔子或狗，再点高亮落点'
+  if (s.turn !== 'hounds') return '电脑正在算最佳的一步…'
+  if (s.selected >= 0) return '点高亮格走一步，点空处取消'
+  if (s.sideStreak >= STALL_LIMIT - 3) return `别再横移了！再磨 ${STALL_LIMIT - s.sideStreak} 步就算你输`
+  return '点一只猎犬，它能去的地方会亮出来'
 }
 
 // ---------------- 绘制 ----------------
@@ -100,56 +104,16 @@ function render(ctx: CanvasRenderingContext2D, s: State): void {
   shadowText(ctx, sub, VW / 2, 146, { size: 26, color: COLORS.textDim, weight: 'normal' })
 
   drawSidePills(ctx, s)
-
-  // 棋盘底板
-  ctx.save()
-  ctx.shadowColor = 'rgba(0,0,0,0.5)'
-  ctx.shadowBlur = 26
-  ctx.shadowOffsetY = 10
-  fillRoundRect(ctx, BOARD_X - 14, BOARD_Y - 14, BOARD_W + 28, BOARD_H + 28, 22, '#0f2027')
-  ctx.restore()
-  fillRoundRect(ctx, BOARD_X - 14, BOARD_Y - 14, BOARD_W + 28, BOARD_H + 28, 22, 'rgba(255,255,255,0.04)', COLORS.line, 2)
-
-  // 格子：棋盘格底色 + 两侧出口列高亮
-  for (let r = 0; r < ROWS; r++) {
-    for (let c = 0; c < COLS; c++) {
-      const exit = c === 0 || c === COLS - 1
-      const base = (r + c) % 2 === 0 ? '#22414a' : '#1b353d'
-      fillRoundRect(ctx, BOARD_X + c * CELL + 2, BOARD_Y + r * CELL + 2, CELL - 4, CELL - 4, 10, base)
-      if (exit) {
-        ctx.save()
-        ctx.globalAlpha = 0.32
-        fillRoundRect(ctx, BOARD_X + c * CELL + 2, BOARD_Y + r * CELL + 2, CELL - 4, CELL - 4, 10, COLORS.green)
-        ctx.restore()
-      }
-      // 出口格的横线标记：暗示这是狐狸要抢的底线
-      if (exit) {
-        const [x, y] = cellCenter(idx(c, r))
-        ctx.save()
-        ctx.globalAlpha = s.board[idx(c, r)] === FOX ? 0.95 : 0.4
-        text(ctx, '出口', x, y, { size: 17, color: '#c8f5d2' })
-        ctx.restore()
-      }
-    }
-  }
-
-  drawMoveHighlight(ctx, s)
+  drawBoard(ctx, s)
   drawSelection(ctx, s)
   drawPieces(ctx, s)
-
   drawLegend(ctx, s)
 
   fillRoundRect(ctx, 60, VH - 196, VW - 120, 104, 22, 'rgba(255,255,255,0.08)')
   text(ctx, tipText(s), VW / 2, VH - 144, { size: 29, weight: 'bold' })
 
   if (s.over) {
-    banner(
-      ctx,
-      VW,
-      VH,
-      s.winner === 'rabbit' ? '胜利' : s.winner === 'fox' ? '失败' : '平局',
-      main,
-    )
+    banner(ctx, VW, VH, s.winner === 'hounds' ? '胜利' : s.winner === 'hare' ? '失败' : '平局', main)
   }
 }
 
@@ -169,38 +133,113 @@ function drawSidePills(ctx: CanvasRenderingContext2D, s: State): void {
     disc(ctx, x + 44, 211, 15, color)
     text(ctx, label, x + 96, 213, { size: 27, align: 'left', weight: 'bold' })
   }
-  pill(70, PIECE_COLOR[RABBIT], '你 · 兔子', !s.over && s.turn === 'rabbit')
-  pill(390, PIECE_COLOR[FOX], '电脑 · 狐狸', !s.over && s.turn === 'fox')
+  pill(70, HOUND_COLOR, '你 · 三只犬', !s.over && s.turn === 'hounds')
+  pill(390, HARE_COLOR, '电脑 · 兔子', !s.over && s.turn === 'hare')
 }
 
-/** 上一手的起点与落点 */
-function drawMoveHighlight(ctx: CanvasRenderingContext2D, s: State): void {
-  if (s.moves === 0 || s.lastFrom < 0 || s.lastTo < 0) return
+/** 底板 + 棋点连线 + 棋点圆点 + 动态逃脱区 */
+function drawBoard(ctx: CanvasRenderingContext2D, s: State): void {
   ctx.save()
-  ctx.strokeStyle = withAlpha('#ffffff', 0.45)
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'
+  ctx.shadowBlur = 26
+  ctx.shadowOffsetY = 10
+  fillRoundRect(ctx, BOARD_X - 14, BOARD_Y - 14, BOARD_W + 28, BOARD_H + 28, 22, '#0f2027')
+  ctx.restore()
+  fillRoundRect(ctx, BOARD_X - 14, BOARD_Y - 14, BOARD_W + 28, BOARD_H + 28, 22, 'rgba(255,255,255,0.04)', COLORS.line, 2)
+
+  // 连线：相邻棋点之间画细线，这是「只能走到相邻一格」的直观表达
+  ctx.save()
+  ctx.strokeStyle = withAlpha('#8fd6ff', 0.22)
   ctx.lineWidth = 3
-  for (const cell of [s.lastFrom, s.lastTo]) {
-    ctx.strokeRect(BOARD_X + colOf(cell) * CELL + 5, BOARD_Y + rowOf(cell) * CELL + 5, CELL - 10, CELL - 10)
+  ctx.lineCap = 'round'
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const from = idx(c, r)
+      if (!isPlayable(from)) continue
+      const [fx, fy] = cellCenter(from)
+      for (const to of neighborsOf(from)) {
+        // 只画右 / 下方向，避免斜边被画两遍
+        if (colOf(to) < c || (colOf(to) === c && rowOf(to) < r)) continue
+        const [tx, ty] = cellCenter(to)
+        ctx.beginPath()
+        ctx.moveTo(fx, fy)
+        ctx.lineTo(tx, ty)
+        ctx.stroke()
+      }
+    }
   }
   ctx.restore()
+
+  // 逃脱区：所有位于「犬阵最后一只犬」左边的棋点。
+  // 猎犬每向右推进一步，这块绿区就大一分 —— 规则不用文字讲，看图就懂。
+  const rear = rearmostHoundCol(s.board)
+  ctx.save()
+  ctx.globalAlpha = 0.22
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (c >= rear || !isPlayable(idx(c, r))) continue
+      const [x, y] = cellCenter(idx(c, r))
+      disc(ctx, x, y, 30, COLORS.green)
+    }
+  }
+  ctx.restore()
+
+  // 棋点圆点
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = idx(c, r)
+      if (!isPlayable(cell)) continue
+      const [x, y] = cellCenter(cell)
+      disc(ctx, x, y, 6, withAlpha('#8fd6ff', 0.32))
+    }
+  }
+
+  // 犬阵最后面那条线：兔子越过它就赢了
+  if (rear > 0) {
+    const x = BOARD_X + (rear - 0.5) * CELL
+    ctx.save()
+    ctx.strokeStyle = withAlpha(COLORS.green, 0.75)
+    ctx.lineWidth = 3
+    ctx.setLineDash([9, 9])
+    ctx.beginPath()
+    ctx.moveTo(x, BOARD_Y + 4)
+    ctx.lineTo(x, BOARD_Y + BOARD_H - 4)
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  // 上一手的起讫点
+  if (s.moves > 0 && s.lastFrom >= 0 && s.lastTo >= 0) {
+    ctx.save()
+    ctx.strokeStyle = withAlpha('#ffffff', 0.4)
+    ctx.lineWidth = 3
+    for (const cell of [s.lastFrom, s.lastTo]) {
+      const [x, y] = cellCenter(cell)
+      ctx.beginPath()
+      ctx.arc(x, y, PIECE_R + 8, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
 }
 
-/** 选中棋子 + 合法落点 + 滑行预览 */
+/** 选中棋子 + 合法落点 + 预览连线 */
 function drawSelection(ctx: CanvasRenderingContext2D, s: State): void {
-  if (s.over || s.turn !== 'rabbit' || s.selected < 0) return
+  if (s.over || s.turn !== 'hounds' || s.selected < 0) return
   const [sx, sy] = cellCenter(s.selected)
   ctx.save()
   ctx.strokeStyle = COLORS.accent
   ctx.lineWidth = 4
   ctx.beginPath()
-  ctx.arc(sx, sy, PIECE_R + 7, 0, Math.PI * 2)
+  ctx.arc(sx, sy, PIECE_R + 8, 0, Math.PI * 2)
   ctx.stroke()
   ctx.restore()
 
-  const targets = slidesFrom(s.board, s.selected)
+  const targets = stepsFrom(s.board, s.selected, HOUND)
   for (const t of targets) {
     const [x, y] = cellCenter(t)
-    disc(ctx, x, y, 13, COLORS.accent, { alpha: 0.55 })
+    disc(ctx, x, y, 17, COLORS.accent, { alpha: 0.5 })
+    disc(ctx, x, y, 7, withAlpha('#ffffff', 0.85))
   }
 
   if (s.hover >= 0 && targets.indexOf(s.hover) >= 0) {
@@ -217,60 +256,57 @@ function drawSelection(ctx: CanvasRenderingContext2D, s: State): void {
   }
 }
 
-/** 棋子：上一手的那枚按进度沿直线滑到落点 */
+/** 棋子：上一手的那枚按进度从起点走到落点 */
 function drawPieces(ctx: CanvasRenderingContext2D, s: State): void {
   const sig = `${s.lastFrom}-${s.lastTo}-${s.moves}`
-  const t = s.moves > 0 ? progressSince('rah-slide', sig, SLIDE_MS) : 1
-  const sliding = s.moves > 0 && s.lastPiece !== EMPTY && t < 1
+  const t = s.moves > 0 ? progressSince('rah-step', sig, STEP_MS) : 1
+  const moving = s.moves > 0 && s.lastPiece !== EMPTY && t < 1
 
-  const [fx, fy] = sliding ? cellCenter(s.lastFrom) : [0, 0]
-  const [tx, ty] = sliding ? cellCenter(s.lastTo) : [0, 0]
-  const k = ease.inOutCubic(t)
+  const [fx, fy] = moving ? cellCenter(s.lastFrom) : [0, 0]
+  const [tx, ty] = moving ? cellCenter(s.lastTo) : [0, 0]
+  const k = ease.outCubic(t)
 
   for (let i = 0; i < s.board.length; i++) {
     const p = s.board[i]
     if (p === EMPTY) continue
-    if (sliding && i === s.lastTo) continue
+    if (moving && i === s.lastTo) continue
     const [x, y] = cellCenter(i)
-    drawPiece(ctx, x, y, p, i === s.lastTo ? 1 - k * 0.35 : 1)
+    drawPiece(ctx, x, y, p, i === s.lastTo ? 1 - k * 0.4 : 1)
   }
 
-  if (sliding) drawPiece(ctx, fx + (tx - fx) * k, fy + (ty - fy) * k, s.lastPiece, 1)
+  if (moving) drawPiece(ctx, fx + (tx - fx) * k, fy + (ty - fy) * k, s.lastPiece, 1)
 }
 
 function drawPiece(ctx: CanvasRenderingContext2D, x: number, y: number, p: Piece, alpha: number): void {
   ctx.save()
   ctx.globalAlpha = alpha
-  disc(ctx, x, y, PIECE_R, PIECE_COLOR[p], { ring: p === RABBIT ? '#9fb3cf' : 'rgba(0,0,0,0.4)' })
-  if (p === RABBIT) {
+  disc(ctx, x, y, PIECE_R, PIECE_COLOR[p], { ring: p === HARE ? '#9fb3cf' : 'rgba(0,0,0,0.4)' })
+  if (p === HARE) {
     // 兔子的两只耳朵
     ctx.fillStyle = '#d7e3f2'
     ctx.beginPath()
-    ctx.ellipse(x - 9, y - PIECE_R - 5, 5, 11, -0.35, 0, Math.PI * 2)
-    ctx.ellipse(x + 9, y - PIECE_R - 5, 5, 11, 0.35, 0, Math.PI * 2)
+    ctx.ellipse(x - 12, y - PIECE_R - 7, 7, 15, -0.35, 0, Math.PI * 2)
+    ctx.ellipse(x + 12, y - PIECE_R - 7, 7, 15, 0.35, 0, Math.PI * 2)
     ctx.fill()
-  } else if (p === FOX) {
-    text(ctx, '狐', x, y + 1, { size: 22, color: '#5c2a05', weight: 'bold' })
-  } else if (p === DOG) {
-    text(ctx, '犬', x, y + 1, { size: 22, color: '#0c355f', weight: 'bold' })
+  } else {
+    text(ctx, '犬', x, y + 1, { size: 28, color: '#0c355f', weight: 'bold' })
   }
   ctx.restore()
 }
 
 function drawLegend(ctx: CanvasRenderingContext2D, s: State): void {
-  const y = BOARD_Y + BOARD_H + 34
-  fillRoundRect(ctx, 60, y, VW - 120, 132, 22, 'rgba(255,255,255,0.06)')
-  const fox = s.board.indexOf(FOX)
-  const guarded = fox >= 0 && isExitCell(fox) && adjacentToHound(s.board, fox)
-  const line1 = '底线判胜：狐狸滑到左右两侧（绿格）即赢，但那一格不能挨着任何一只猎犬'
-  const line2 = guarded
-    ? '⚠ 狐狸已经站上底线，却正挨着猎犬——还不算赢'
-    : '滑行只能落在该方向的第一个空格上：可以越过棋子，但不能压在棋子上'
-  text(ctx, line1, VW / 2, y + 44, { size: 25, color: COLORS.textDim })
-  text(ctx, line2, VW / 2, y + 88, {
+  const y = 828
+  fillRoundRect(ctx, 60, y, VW - 120, 190, 22, 'rgba(255,255,255,0.06)')
+  text(ctx, '你执三只猎犬：一次只能走到相邻一格，不能后退', VW / 2, y + 42, { size: 25, color: COLORS.textDim })
+  text(ctx, '把兔子逼得无路可走 = 你赢；绿区是兔子想绕过去的地方', VW / 2, y + 86, {
     size: 25,
-    color: guarded ? COLORS.accent : COLORS.textDim,
+    color: COLORS.textDim,
   })
+  const stalled = s.sideStreak >= STALL_LIMIT - 3
+  const line3 = stalled
+    ? `⚠ 已经横移 ${s.sideStreak} 步，连着 ${STALL_LIMIT} 步就算你输`
+    : '猎犬不能后退，兔子绕到你左后方就再也追不上了'
+  text(ctx, line3, VW / 2, y + 134, { size: 25, color: stalled ? COLORS.accent : COLORS.textDim })
 }
 
 // ---------------- 副作用 ----------------
@@ -281,7 +317,10 @@ function effects(prev: State, next: State): Effect[] {
   const [x, y] = cellCenter(next.lastTo)
   out.push({ kind: 'burst', x, y, color: PIECE_COLOR[next.lastPiece], count: 10 })
   if (next.over) {
-    out.push({ kind: 'sound', name: next.winner === 'rabbit' ? 'win' : next.winner === 'fox' ? 'lose' : 'click' })
+    out.push({
+      kind: 'sound',
+      name: next.winner === 'hounds' ? 'win' : next.winner === 'hare' ? 'lose' : 'click',
+    })
     out.push({ kind: 'shake', power: 12 })
   }
   return out
@@ -289,27 +328,27 @@ function effects(prev: State, next: State): Effect[] {
 
 function outcome(state: State): Outcome | null {
   if (!state.over) return null
-  // 玩家越快围死狐狸越好
-  return { score: state.moves, better: 'lower', unit: ' 步', win: state.winner === 'rabbit' }
+  // 玩家执猎犬：越快围死兔子越好
+  return { score: state.moves, better: 'lower', unit: ' 步', win: state.winner === 'hounds' }
 }
 
 // ---------------- 输入 ----------------
 
 function input(state: State, p: PointerInput): Action | null {
-  if (state.over || state.turn !== 'rabbit') return null
+  if (state.over || state.turn !== 'hounds') return null
   const cell = hitCell(p.x, p.y)
 
   if (p.kind === 'move' && !p.pressed) return { type: 'hover', cell }
 
   if (p.kind === 'down' || p.kind === 'up') {
-    // 已选中且点的是合法落点 → 滑行（先按下后松手也能完成拖拽式操作）
-    if (cell >= 0 && state.selected >= 0 && canSlide(state.board, state.selected, cell)) {
-      return { type: 'slide', from: state.selected, to: cell }
+    // 已选中且点的是合法落点 → 走一步（按下或松手都能完成，点两下或拖拽都行）
+    if (cell >= 0 && state.selected >= 0 && canStep(state.board, state.selected, cell, HOUND)) {
+      return { type: 'step', from: state.selected, to: cell }
     }
     if (p.kind === 'down') {
       if (cell < 0) return state.selected !== -1 ? { type: 'clear' } : null
-      if (state.board[cell] === RABBIT || state.board[cell] === DOG) {
-        return slidesFrom(state.board, cell).length > 0 ? { type: 'select', cell } : { type: 'clear' }
+      if (state.board[cell] === HOUND) {
+        return stepsFrom(state.board, cell, HOUND).length > 0 ? { type: 'select', cell } : { type: 'clear' }
       }
       return state.selected !== -1 ? { type: 'clear' } : null
     }
