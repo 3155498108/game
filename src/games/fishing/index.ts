@@ -372,6 +372,25 @@ function effects(prev: State, next: State): Effect[] {
   return out
 }
 
+/**
+ * 金币结算：门票制。
+ *
+ * 钓鱼是「技巧换钱」而不是对赌——玩家真正投入的是时间和技术，不是押注。
+ * 所以这里的口径是：**注额就是门票**；钓到的斤数不足 `PAR` 视为没达标，
+ * 门票打水漂；达标之后按超出 PAR 的整数倍返还，钓得越多赚得越多。
+ *
+ * `PAR` 取 150 斤是实测出来的：用一个只会隔几秒空放一竿的笨 bot 跑 15 个种子，
+ * 成绩落在 129~269 斤。也就是说笨玩家大概刚好踩线，熟手能到 400 斤以上。
+ */
+const PAR = 150
+
+function coins(_s: State, o: Outcome, bet: number): number {
+  if (bet <= 0) return 0
+  const score = typeof o.score === 'number' && Number.isFinite(o.score) ? o.score : 0
+  const mult = Math.floor(score / PAR)
+  return mult <= 0 ? -bet : bet * mult
+}
+
 const game: GameModule<State, Action> = {
   ...meta,
   create,
@@ -384,6 +403,7 @@ const game: GameModule<State, Action> = {
   controls,
   outcome,
   effects,
+  coins,
 }
 
 export default game

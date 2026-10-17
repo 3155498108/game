@@ -7,12 +7,13 @@
  * - 横竖屏不符时显示旋转提示层（不硬转 canvas）
  * - 动画/粒子走旁路缓存，reduce 保持纯净
  */
-import type { Control, Effect, GameMeta, GameModule, PointerInput } from '../core/types'
+import type { Control, Effect, GameMeta, GameModule, Outcome, PointerInput } from '../core/types'
 import { COLORS } from '../render/draw'
 import { anyActive, resetAnims } from '../render/anim'
 import { burst, clearFx, drawFx, flash, fxActive, shake, shakeOffset, updateFx } from '../render/fx'
 import { isMuted, play, setMuted, unlockAudio } from '../render/audio'
 import { formatBest, readBest, readJSON, submitBest, writeJSON } from './storage'
+import { BET_STEPS, formatCoins, formatDelta, readBet, readWallet, settle, writeBet, writeWallet } from './coins'
 
 export const DPR_CAP = 2
 const MUTE_KEY = 'gs:settings:muted'
@@ -26,6 +27,12 @@ export interface PlayElements {
   rotate: HTMLElement
   toast: HTMLElement
   sound: HTMLButtonElement
+  /** 金币余额（结算后会变，由 runtime 调 `setWallet` 刷新） */
+  wallet?: HTMLElement
+  /** 本局盈亏提示，结算后显示 +120 / -50 */
+  delta?: HTMLElement
+  /** 下注额选择器，做成一个 chip 按钮组 */
+  betBox?: HTMLElement
 }
 
 function escapeHtml(s: string): string {
@@ -56,6 +63,9 @@ export class Runtime<S = unknown, A = unknown> {
   private ro: ResizeObserver | null = null
   private toastTimer = 0
   private disposers: Array<() => void> = []
+  /** 金币：本局下注额与钱包快照 */
+  private wallet = readWallet()
+  private bet = readBet()
 
   constructor(
     private mod: GameModule<S, A>,
@@ -176,6 +186,14 @@ export class Runtime<S = unknown, A = unknown> {
       writeJSON(MUTE_KEY, isMuted())
       this.updateSoundBtn()
     })
+    // 下注额：点一下切到下一档。放在按钮区而不是画布上，触控目标天然 ≥44px。
+    if (this.el.betBox) {
+      this.paintBet()
+      this.on(this.el.betBox, 'click', () => {
+        unlockAudio()
+        this.cycleBet()
+      })
+    }
     this.updateSoundBtn()
     const dismiss = this.el.rotate.querySelector('button')
     if (dismiss)
@@ -397,6 +415,7 @@ export class Runtime<S = unknown, A = unknown> {
         .join('')
     }
     if (force) this.el.best.textContent = (this.daily ? '每日挑战 · ' : '') + formatBest(readBest(this.meta.id))
+    if (force) this.refreshWallet()
   }
 
   private checkOutcome(): void {
@@ -411,6 +430,54 @@ export class Runtime<S = unknown, A = unknown> {
     const record = submitBest(this.meta.id, o)
     this.el.best.textContent = (this.daily ? '每日挑战 · ' : '') + formatBest(readBest(this.meta.id))
     if (record) this.toast(`新纪录！${o.score}${o.unit}`)
+    this.settleCoins(o)
+  }
+
+  /**
+   * 一局结束时的金币结算。与 `submitBest` 同一个触发点，且同样受 `outcomeSaved`
+   * 保护——**一局只结算一次**，反复 render 不会重复入账。
+   *
+   * 每日挑战不扣注、也不结算：挑战赛的分数由全站统一，拿它当赌注会让
+   * 「刷新纪录再打一把」的玩法变成刷币。
+   */
+  private settleCoins(o: Outcome): void {
+    if (this.daily) return
+    const r = settle(this.mod, this.state, o, this.wallet, this.bet)
+    if (r.delta === 0) {
+      this.refreshWallet(0)
+      return
+    }
+    this.wallet = { ...this.wallet, balance: r.balance }
+    writeWallet(this.wallet)
+    this.refreshWallet(r.delta)
+    this.toast(`${formatDelta(r.delta)} 金币`)
+    // 输光之后得告诉玩家还有救，否则像是卡住了
+    if (this.wallet.balance <= 0) this.toast('金币输光了 · 回首页每日签到可以再领一笔')
+  }
+
+  /** 刷新余额显示；`delta` 传入时顺带显示本局盈亏 */
+  private refreshWallet(delta = 0): void {
+    if (this.el.wallet) this.el.wallet.textContent = `🪙 ${formatCoins(this.wallet.balance)}`
+    if (this.el.delta) {
+      this.el.delta.textContent = delta === 0 ? '' : formatDelta(delta)
+      this.el.delta.classList.toggle('up', delta > 0)
+      this.el.delta.classList.toggle('down', delta < 0)
+    }
+  }
+
+  /** 切到下一档注额；余额不够下一档时也允许切——结算时按余额夹住 */
+  private cycleBet(): void {
+    const i = BET_STEPS.indexOf(this.bet as (typeof BET_STEPS)[number])
+    this.bet = BET_STEPS[(i + 1) % BET_STEPS.length]
+    writeBet(this.bet)
+    this.paintBet()
+    this.toast(`本局注 ${formatCoins(this.bet)} 金币`)
+  }
+
+  private paintBet(): void {
+    if (!this.el.betBox) return
+    this.el.betBox.textContent = `注 ${formatCoins(this.bet)}`
+    this.el.betBox.title = `点击切换下注额（${BET_STEPS.map(formatCoins).join(' / ')}）`
   }
 
   private toast(msg: string): void {

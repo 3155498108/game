@@ -38,6 +38,11 @@ export function mountPlay(root: HTMLElement, id: string, params: URLSearchParams
     </div>
     <footer class="dock">
       <span class="best"></span>
+      <div class="coins">
+        <button type="button" class="chip bet" title="点击切换下注额">注</button>
+        <span class="wallet">🪙 0</span>
+        <span class="delta"></span>
+      </div>
       <div class="ctrls"></div>
     </footer>
   </div>`
@@ -52,6 +57,9 @@ export function mountPlay(root: HTMLElement, id: string, params: URLSearchParams
     rotate: q('.rotate-tip'),
     toast: q('.toast'),
     sound: q('.sound'),
+    wallet: q('.wallet'),
+    delta: q('.delta'),
+    betBox: q('.chip.bet'),
   }
 
   let disposed = false

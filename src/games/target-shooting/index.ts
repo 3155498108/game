@@ -214,6 +214,24 @@ function effects(prev: State, next: State): Effect[] {
 
 // ---------------- 导出 ----------------
 
+/**
+ * 金币结算：门票制。
+ *
+ * 射靶是限时命中率游戏，同样没有输赢，只有得分。口径同另外三款：
+ * 注额是门票，得分不足 `PAR` 打水漂，达标后按整数倍返还。
+ *
+ * `PAR = 300 分`：靶环分值 10/20/50/100，限时 60 秒。
+ * 打中十几发平均 40 分就到 300，熟手可以打到 600 以上。
+ */
+const PAR = 300
+
+function coins(_s: State, o: Outcome, bet: number): number {
+  if (bet <= 0) return 0
+  const score = typeof o.score === 'number' && Number.isFinite(o.score) ? o.score : 0
+  const mult = Math.floor(score / PAR)
+  return mult <= 0 ? -bet : bet * mult
+}
+
 const game: GameModule<State, Action> = {
   ...meta,
   create,
@@ -224,6 +242,7 @@ const game: GameModule<State, Action> = {
   hint,
   outcome,
   effects,
+  coins,
 }
 
 export default game

@@ -5,8 +5,9 @@
 
 - 技术栈：Vite + TypeScript（`strict: true`）+ Canvas 2D + 原生 DOM/CSS，测试用 Vitest
 - **零运行时依赖**：不引入游戏引擎、状态库、物理引擎、UI 组件库、后端框架
-- 站点壳 gzip 后约 5.8 KB，单个游戏按需加载约 9.4 KB gzip
+- 站点壳主块 gzip 后约 17.7 KB，单个游戏按需加载约 4 KB gzip
 - 纯静态部署，`dist/` 直接丢到任意静态托管即可，无后端
+- 全站有**金币系统**：每局可下注、输赢结算金币，余额存在 localStorage，首页可每日签到领币
 
 ---
 
@@ -42,10 +43,11 @@ src/
 │  ├─ fx.ts       #   粒子 / 闪光 / 震屏
 │  └─ audio.ts    #   WebAudio 合成音效（无音频文件）
 ├─ shell/         # 站点壳：首屏只加载这一层
-│  ├─ home.ts     #   首页游戏列表、分类、搜索、每日挑战
-│  ├─ play.ts     #   游戏页外壳
-│  ├─ runtime.ts  #   游戏运行时：缩放适配、指针输入、rAF 循环
+│  ├─ home.ts     #   首页游戏列表、分类、搜索、每日挑战、金币余额与签到
+│  ├─ play.ts     #   游戏页外壳（含金币条：注额 / 余额 / 本局盈亏）
+│  ├─ runtime.ts  #   游戏运行时：缩放适配、指针输入、rAF 循环、结算金币
 │  ├─ registry.ts #   游戏注册表（自动发现 games/*/）
+│  ├─ coins.ts    #   钱包：余额 / 注额 / 下注 / 结算 / 每日签到（纯本地虚拟积分）
 │  ├─ storage.ts  #   localStorage 安全封装
 │  └─ daily.ts    #   每日挑战种子
 └─ games/
@@ -100,9 +102,80 @@ interface GameModule<S = any, A = any> extends GameMeta {
   controls?(state: S): Control<A>[]            // 提示区按钮（天然满足 44px 触控）
   outcome?(state: S): Outcome | null           // 结算成绩
   effects?(prev: S, next: S): Effect[]         // 音效 / 粒子 / 震屏
+  coins?(state: S, outcome: Outcome, bet: number): number  // 金币结算，默认按胜负算 ±注额
   aiDelay?: number                             // AI 思考延迟 ms，默认 500；0 = 每帧同步
 }
 ```
+
+---
+
+## 金币系统
+
+全站通用的**纯本地虚拟积分**：开局送 1000 枚，每局可选注额下注，赢了翻倍、输了扣掉，余额存在 `localStorage`。
+
+> **产品边界**：这是纯本地的娱乐积分，**没有充值、兑换、交易、提现，也不上传任何数据**。想「重置」直接清掉浏览器的站点存储即可。
+
+### 为什么结算逻辑住在站点壳而不是 `core/`
+
+钱包要读写 `localStorage`，而本项目的硬约束是**游戏的 `rules.ts` 不得触碰全局存储**。所以：
+
+```
+shell/coins.ts   ← 钱包、下注、结算、签到（唯一允许读写 localStorage 的地方之一）
+     ↓ 调用
+games/<id>/index.ts  ← 只提供一个纯函数 coins(state, outcome, bet): number
+```
+
+游戏侧只拿到 `state` 和 `bet`，返回一个**金币增减量**，永远不知道钱存在哪。
+
+### 默认结算规则
+
+不写 `coins()` 的游戏走壳层默认规则：
+
+| `outcome.win` | 结算 |
+|---|---|
+| `true` | `+bet` |
+| `false` | `-bet` |
+| `undefined` | **不结算**（不扣也不加） |
+
+> 第三条最容易踩：得分型游戏**不写 `coins()` 就等于免费玩**。「不实现」的真实含义是「这个游戏不参与金币」，不是「白送」。
+
+### 自定义结算：得分型游戏用「门票制」
+
+4 款按分数结算的游戏（钓鱼 / 六连珠 / 轨道车 / 射靶）写了各自的 `coins()`，统一公式：
+
+```
+mult = floor(score / PAR)
+mult <= 0  →  -bet      // 门票打水漂
+mult >  0  →  +bet×mult
+```
+
+`PAR`（保本分数线）由探针实测得出，不是拍脑袋定的：
+
+| 游戏 | PAR | 怎么定的 |
+|---|---|---|
+| 钓鱼 fishing | 150 斤 | 笨 bot 实测 129~269 |
+| 六连珠 link-six | 400 分 | 随机走法实测 1130 |
+| 轨道车 rail-cart | 50 分 | 不躲 bot 只有 5~78 |
+| 射靶 target-shooting | 300 分 | 探针实测 |
+
+新写的博彩类游戏（梭哈 / 轮盘 / 老虎机 / 扫雷赌局 / 百家乐）也走 `coins()`，但它们按**牌型 / 赔率**换算倍数，同样遵守**按注额倍数换算、不写死面值**——否则玩家调注额就不起作用了。
+
+### 破产兜底
+
+四道防线，任何一道单独失效都不会把玩家搞成负数：
+
+1. 下注额永不超余额（`effectiveBet`）
+2. 单局最多输掉本局注额，不透支
+3. 赢钱封顶（`MAX_PAYOUT`），避免溢出
+4. 余额夹在 ≥0
+
+结算**只在终局触发一次**（与「刷新最佳纪录」同点、同受 `outcomeSaved` 保护）；**每日挑战不结算**，防止刷币。
+
+### 每日签到
+
+首页顶部有余额条与签到按钮。7 天一循环，依次发 50 / 75 / 100 / 125 / 150 / 175 / 200 枚，签完等次日。
+
+签到判定用的是**本地日期**（`getFullYear/getMonth/getDate`）而不是 `toISOString()`——后者会把东八区凌晨 8 点之前算成前一天。
 
 ---
 
@@ -212,7 +285,7 @@ interface GameModule<S = any, A = any> extends GameMeta {
    然后 `npm run dev`，在首页确认卡片出现、点进去能完整玩完一局。
 
    > `src/smoke.test.ts` 是全站冒烟：用普通对象冒充 `CanvasRenderingContext2D`，按站点壳的方式
-   > （`aiAction` → `controls()` → 画布点击探针 → `tick(16)`）把 38 款各推一遍。
+   > （`aiAction` → `controls()` → 画布点击探针 → `tick(16)`）把 43 款各推一遍。
    > **单测只驱动 `rules.ts`，够不到 `index.ts` 这一层**——`render()` 会不会抛、控件有没有真的接到
    > `reduce` 上，只有它能查（章鱼烧的渲染崩溃就是它挖出来的，见 `DECISIONS.md` 4.14）。
    > 新增游戏不用改它，glob 会自动发现。
@@ -230,6 +303,10 @@ interface GameModule<S = any, A = any> extends GameMeta {
 - **规格里显式写出的约束要逐条勾**：`link-six` 能检测「连到已消除的球」却漏了规格明确要求的「不允许自交」，就是靠逐条核对才发现的（`DECISIONS.md` 4.8）。
 - **动画旁路推出来的下标，别直接拿去索引 state 里的数组**：动画签名描述的是「刚刚发生了什么」，而数组内容可能已经被后续规则改写。章鱼烧按「本次落子的格子」读颜色，消除压实后那一格是 0，查表越界拿到 `undefined`，整个 `render` 抛异常、画面黑掉（`DECISIONS.md` 4.14）。
 - **音效**：在 `effects(prev, next)` 里根据前后状态差异返回 `{ kind: 'sound', name: 'place' }` 之类，不要在 `reduce` 里直接调播放函数。
+- **`coins()` 要按注额倍数换算，别写死面值**：写 `return 100` 的话，玩家把注额调到 500 也只赔 100。
+  正确写法是 `bet × 倍数`。
+- **`coins()` 不是唯一出口**：壳层只在**终局那一步**（`checkOutcome`）读一次 `coins()`，
+  和「刷新最佳纪录」同点、同受 `outcomeSaved` 保护。不要指望每个 action 都能结算。
 
 ---
 
@@ -259,7 +336,7 @@ interface GameModule<S = any, A = any> extends GameMeta {
 
 ## 已实现游戏
 
-**共 38 款**，与规格逐条对应。
+**共 43 款**，与规格逐条对应。
 
 | 批次 | 游戏 |
 |---|---|
@@ -270,16 +347,24 @@ interface GameModule<S = any, A = any> extends GameMeta {
 | 第 5 批（迷你） | 坦克对决 tank-duel、轨道车 rail-cart、弹戏 pachinko、猪尾巴 pig-tail |
 | 第 6 批（休闲动作） | 钓鱼 fishing、射靶 target-shooting、玩具足球 toy-football、玩具棒球 toy-baseball、玩具网球 toy-tennis、玩具拳击 toy-boxing、玩具冰壶 toy-curling、高尔夫球 golf |
 | 第 7 批（共享渲染重活） | 台球简化版 pool-lite、保龄球简化版 bowling-lite |
+| 第 8 批（博彩类 + 全站金币） | 梭哈 stud-poker、轮盘 roulette、三轴老虎机 slot-machine、扫雷赌局 mines、百家乐 baccarat |
 
 每款一个目录 `src/games/<id>/`，固定 4 个文件（`meta.ts` / `rules.ts` / `index.ts` / `rules.test.ts`），新增游戏不改站点壳任何代码（注册表用 `import.meta.glob` 自动发现）。
 
-**验收现状**（全部实测通过）：
+**验收现状**：
 
-- `npm test` → **39 个测试文件 / 1421 个用例全绿**（38 份游戏单测 + 1 份全站冒烟）
+- `npm test` → **46 个测试文件 / 1686 个用例全绿**（43 份游戏单测 + 全站冒烟 89 + 金币单测 26 + 金币集成 55）
 - `npx tsc --noEmit` → **零错误**
-- `npm run build` → 成功；**站点壳主块 15.2 KB gzip**（上限 50 KB），41 个游戏块按需加载，全部 JS 合计 162 KB gzip
-- **38 款在 375×667 与 1440×900 两个视口下均无横向溢出**，顶栏/操作区跟随画面宽度居中
-- `rules.ts` 全局无 `Math.random` / `Date` / `performance`（仅注释中出现说明性文字）
-- 全站冒烟（`src/smoke.test.ts`）：38 款的 `render` / `effects` / `controls` 接线在整局每一步都不抛错，通用驱动能推完 25/38 款
+- `npm run build` → 成功；**站点壳主块 17.7 KB gzip**（上限 50 KB），游戏块按需加载，全部 JS+CSS 合计约 189 KB gzip
+- `rules.ts` 全局无 `Math.random` / `Date` / `performance`（仅注释中出现说明性文字）；5 款新游戏的 `rules.ts` 只 import `core/` 下的模块
+- 全站冒烟（`src/smoke.test.ts`）：43 款的 `render` / `effects` / `controls` 接线在整局每一步都不抛错，通用驱动能推完 28/43 款
+- 金币集成（`src/coins-integration.test.ts`）：**43 款真实游戏的 `coins()` 全部灌进 `settle()` 的安全网**——10 种 outcome × 5 档注额 × 「真实开局」和「空 state」两种输入，余额恒为整数/有限/非负、不变式成立、结算可复现；9 款自定义 `coins()` 的净盈亏都随注额同比缩放
+- 真机渲染抽查（`vite preview` + 内置浏览器，746×1169 与 1280×720 两种视口）：首页、梭哈、扫雷赌局、三轴老虎机、轮盘均正常渲染，**并因此挖出并修掉老虎机赔付表的叠字缺陷**（见 `DECISIONS.md` 4.20）
+
+**已知未验证项**：
+
+- **交互链路没有在浏览器里点通过。** 内置浏览器标签页不可见，`requestAnimationFrame` 是停摆的——同一页两次截图字节完全相同，按钮点下去状态纹丝不动。所以「玩一局看余额变不变」这类端到端验证在当前环境做不了，只能靠 `coins-integration.test.ts` 在代码层覆盖。
+- **375×667 未做真实窄视口渲染**。金币条是 flex 布局，最宽组合（注 chip + 余额 + 盈亏）约 180px，理论上 375px 放得下，但这是**看代码算出来的，不是看出来的**。真机上若出现文字叠压，优先查 `.coins` 与 footer 的高度。
+- 43 款没有逐款做人工视觉走查，只抽查了首页与 5 款新游戏。
 
 实现过程中踩过的坑——真 bug（坦克对决 47% 对局死循环、章鱼烧渲染崩溃）、假 bug（冒烟测试自己有 5 个坑）、以及「测试写错 vs 代码写错」「已完成任务 ≠ 已停止会话」这两条归因方法——都记在 `DECISIONS.md` 第四节；不实现的 7 类游戏及原因见第一节。

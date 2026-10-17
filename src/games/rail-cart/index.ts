@@ -298,6 +298,25 @@ function key(s: State, k: string): Action | null {
   return null
 }
 
+/**
+ * 金币结算：门票制。
+ *
+ * 轨道车是实时生存游戏，没有「赢/输」，只有活多久。口径同另外三款：
+ * 注额是门票，得分不足 `PAR` 打水漂，达标后按整数倍返还。
+ *
+ * `PAR = 50 分`：得分 = `floor(距离/120) + 金币 × 10`。实测完全不躲的笨 bot
+ * 只有 5~78 分，而按 `DECISIONS.md` 4.x 调过的「称职玩家」能活到 69.8 秒。
+ * 50 分大致对应「活过一半赛程」。
+ */
+const PAR = 50
+
+function coins(_s: State, o: Outcome, bet: number): number {
+  if (bet <= 0) return 0
+  const score = typeof o.score === 'number' && Number.isFinite(o.score) ? o.score : 0
+  const mult = Math.floor(score / PAR)
+  return mult <= 0 ? -bet : bet * mult
+}
+
 const game: GameModule<State, Action> = {
   ...meta,
   create,
@@ -309,6 +328,7 @@ const game: GameModule<State, Action> = {
   effects,
   outcome,
   controls,
+  coins,
   hint: (s) =>
     s.phase === 'ready'
       ? '点「发车」或直接点画面开始，之后左右滑动 / 按 ← → 换道'

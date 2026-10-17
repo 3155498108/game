@@ -1,5 +1,5 @@
 ﻿/**
- * 全站冒烟测试：38 款一起过一遍**渲染层与接线**。
+ * 全站冒烟测试：43 款一起过一遍**渲染层与接线**。
  *
  * 为什么单测不够：每个游戏的 `rules.test.ts` 只驱动 `rules.ts` 的纯逻辑，
  * 覆盖不到 `index.ts` 这一层 —— `render()` 在真实 ctx 上会不会抛、两个状态之间
@@ -233,17 +233,25 @@ function drive(g: GameModule, seed: number, maxSteps: number): DriveResult {
  */
 const BUDGET = 900
 
+/**
+ * 规格里的游戏总数。
+ *
+ * 写成一个具名常量而不是散落的字面量：加游戏时要改的地方只有这一处，漏改了这里就会红，
+ * 而不是各处文案悄悄变成「38 款但其实 43 款」。
+ */
+const GAME_COUNT = 43
+
 /** drive() 的结果按 id 缓存，供后续用例复用（vitest 同一文件内顺序执行） */
 const DRIVES = new Map<string, DriveResult>()
 
-describe('全站冒烟：38 款都要能跑起来', () => {
-  it('游戏数量与规格一致（38 款）', () => {
-    expect(IDS.length).toBe(38)
+describe('全站冒烟：43 款都要能跑起来', () => {
+  it('游戏数量与规格一致（43 款）', () => {
+    expect(IDS.length).toBe(GAME_COUNT)
   })
 
   it('元信息齐全：id 与目录名一致、视口固定 720×1280、分类与文案非空', () => {
     const metas = new Map(Object.entries(metaModules).map(([p, m]) => [idOf(p), m]))
-    expect(metas.size).toBe(38)
+    expect(metas.size).toBe(GAME_COUNT)
     for (const id of IDS) {
       const m = metas.get(id)
       expect(m, `${id} 缺少 meta.ts`).toBeDefined()
@@ -331,7 +339,7 @@ describe('全站冒烟：38 款都要能跑起来', () => {
     // 「会不会卡死」由每个游戏自己的单测证明（AI 对战必然终局）；
     // 这里只要求它至少能在多数游戏上真的走到终局，否则说明驱动本身退化了。
     const finished = IDS.filter((id) => DRIVES.get(id)?.ended)
-    console.log(`[冒烟] 通用驱动推完 ${finished.length}/38：${finished.join(', ')}`)
-    expect(finished.length).toBeGreaterThanOrEqual(20)
+    console.log(`[冒烟] 通用驱动推完 ${finished.length}/${GAME_COUNT}：${finished.join(', ')}`)
+    expect(finished.length).toBeGreaterThanOrEqual(Math.ceil(GAME_COUNT / 2))
   })
 })

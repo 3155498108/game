@@ -7,7 +7,7 @@
  * - 分数滚动用 anim.tweenTo，可消除提示用 anim.pulse；
  * - 粒子 / 音效通过 effects() 交给站点壳执行。
  */
-import type { Effect, GameModule, PointerInput } from '../../core/types'
+import type { Effect, GameModule, Outcome, PointerInput } from '../../core/types'
 import { COLORS, PALETTE, background, banner, disc, ease, fillRoundRect, shadowText, text, topBar, withAlpha } from '../../render/draw'
 import { progressSince, pulse, tweenTo } from '../../render/anim'
 import { gridHit } from '../../core/geom'
@@ -219,6 +219,26 @@ function effects(prev: State, next: State): Effect[] {
   return out
 }
 
+/**
+ * 金币结算：门票制。
+ *
+ * `outcome.win` 这里原本是**写死的 `false`**——以前只用于展示，不影响任何逻辑；
+ * 接上金币系统之后它变成了语义上吃重的东西（默认规则会判定「每局都输」）。
+ * 连珠是单人消除游戏，本来就没有输赢可言，所以改成按分数结算。
+ *
+ * `PAR = 400 分`：单次消除是 `count² × 5 + (连击-1) × 20`，连 4~5 个球约 80~145 分，
+ * 一盘清到无可消除时通常能打十几次，也就是 1000 分上下。400 意味着
+ * 「清掉大半盘」刚好回本，PAR 400 分。
+ */
+const PAR = 400
+
+function coins(_s: State, o: Outcome, bet: number): number {
+  if (bet <= 0) return 0
+  const score = typeof o.score === 'number' && Number.isFinite(o.score) ? o.score : 0
+  const mult = Math.floor(score / PAR)
+  return mult <= 0 ? -bet : bet * mult
+}
+
 const game: GameModule<State, Action> = {
   ...meta,
   create,
@@ -226,7 +246,8 @@ const game: GameModule<State, Action> = {
   render,
   input,
   effects,
-  outcome: (s) => (s.over ? { score: s.score, better: 'higher', unit: ' 分', win: false } : null),
+  outcome: (s) => (s.over ? { score: s.score, better: 'higher', unit: ' 分' } : null),
+  coins,
   controls: (s) => [{ label: '洗牌', action: { type: 'shuffle' }, disabled: s.over }],
   hint: (s) =>
     s.over

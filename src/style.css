@@ -487,6 +487,69 @@ body.playing {
   margin-bottom: 6px;
 }
 
+/* 金币条：下注切换 + 余额 + 本局盈亏，跟 .best 同一行右侧，省一整行高度 */
+.coins {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  min-height: 30px;
+}
+
+.chip.bet {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  border-color: rgba(255, 204, 51, 0.45);
+}
+
+.coins .wallet {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.coins .delta {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.coins .delta.up {
+  color: #7ee08a;
+}
+
+.coins .delta.down {
+  color: #ff8a8a;
+}
+
+/* 首页余额 + 签到 */
+.wallet-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.wallet-bar .wallet {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.chip.signin {
+  min-height: 38px;
+}
+
+.chip.signin[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .ctrls {
   display: flex;
   flex-wrap: wrap;

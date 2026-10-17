@@ -100,6 +100,19 @@ export interface GameModule<S = any, A = any> extends GameMeta {
   outcome?(state: S): Outcome | null
   /** 从状态迁移中推导副作用 */
   effects?(prev: S, next: S): Effect[]
+  /**
+   * 金币结算：一局结束时算出**净盈亏**（正 = 赚，负 = 输，0 = 退还）。
+   *
+   * **默认规则**（不实现本方法时生效）：`outcome.win === true` 赢 `bet`，
+   * `=== false` 输 `bet`，`undefined`（平局/无胜负概念）不结算。
+   * 只有「得分型」或「赔率特殊」的游戏才需要自己实现——梭哈的老葫芦、
+   * 轮盘的红黑、百家乐的和对、以及所有按分数换算的金币游戏。
+   *
+   * 注：`bet` 是玩家在壳层选定的下注额，实现里必须**原样按倍数换算**，
+   * 不要在内部再乘一个固定面值，否则玩家调注额就不起作用了。
+   * 另注：结算逻辑住在壳层，`rules.ts` 不得触碰本函数。
+   */
+  coins?(state: S, outcome: Outcome, bet: number): number
   /** AI 落子前的思考延迟（ms），默认 500；0 表示每帧同步调用（实时游戏） */
   aiDelay?: number
 }

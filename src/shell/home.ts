@@ -1,8 +1,9 @@
-/** 首页：游戏卡片列表（按 category 分组）+ 分类筛选 + 搜索 + 每日挑战 */
+/** 首页：游戏卡片列表（按 category 分组）+ 分类筛选 + 搜索 + 每日挑战 + 金币签到 */
 import { CATEGORY_LABEL, CATEGORY_ORDER, type Category, type GameMeta } from '../core/types'
 import { GAMES } from './registry'
 import { formatBest, readBest, readJSON, writeJSON } from './storage'
 import { dailyGame, todayLabel, todaySeed } from './daily'
+import { canSignIn, claimSignin, formatCoins, readWallet, signinAmount } from './coins'
 
 const FILTER_KEY = 'gs:settings:filter'
 const PLAYERS_LABEL: Record<string, string> = { '1': '单人', '2': '双人', ai: '人机' }
@@ -33,11 +34,19 @@ export function mountHome(root: HTMLElement): () => void {
   const seed = todaySeed()
   const daily = dailyGame(GAMES, seed)
   const cats = CATEGORY_ORDER.filter((c) => GAMES.some((g) => g.category === c))
+  const wallet = readWallet()
+  const claimable = canSignIn(wallet)
 
   root.innerHTML = `
   <div class="home">
     <header class="home-head">
       <h1>小游戏合集 <small>${GAMES.length} 款</small></h1>
+      <div class="wallet-bar">
+        <span class="wallet">🪙 ${formatCoins(wallet.balance)}</span>
+        <button type="button" class="chip signin${claimable ? ' on' : ''}" data-signin ${claimable ? '' : 'disabled'}>
+          ${claimable ? `签到 +${signinAmount(wallet)}` : '今日已签到'}
+        </button>
+      </div>
       <input class="search" type="search" placeholder="搜索游戏名 / 标签" aria-label="搜索游戏" value="${esc(query)}" />
     </header>
     ${
@@ -95,9 +104,30 @@ export function mountHome(root: HTMLElement): () => void {
   }
   input.addEventListener('input', onInput)
   chips.addEventListener('click', onChip)
+  const signinBtn = root.querySelector('.chip.signin') as HTMLButtonElement | null
+  const walletEl = root.querySelector('.wallet-bar .wallet') as HTMLElement | null
+  const onSignin = () => {
+    const r = claimSignin(wallet)
+    if (!r.ok) return
+    if (walletEl) walletEl.textContent = `🪙 ${formatCoins(r.wallet.balance)}`
+    if (signinBtn) {
+      signinBtn.textContent = '今日已签到'
+      signinBtn.disabled = true
+      signinBtn.classList.remove('on')
+    }
+    // 签完给个明确反馈：否则「+150」一闪而过，玩家会以为没点到
+    window.setTimeout(() => {
+      signinBtn?.animate?.(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }],
+        { duration: 280 },
+      )
+    }, 0)
+  }
+  signinBtn?.addEventListener('click', onSignin)
   renderList()
   return () => {
     input.removeEventListener('input', onInput)
     chips.removeEventListener('click', onChip)
+    signinBtn?.removeEventListener('click', onSignin)
   }
 }
