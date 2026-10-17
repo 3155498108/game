@@ -10,6 +10,7 @@ import {
   BALL_R,
   FIELD_H,
   FIELD_W,
+  MAX_PLAY_TICKS,
   MAX_RALLY_HITS,
   MAX_SPEED,
   PADDLE_MAX,
@@ -22,6 +23,7 @@ import {
   create,
   isLegal,
   legalActions,
+  reasonText,
   reduce,
   speedOf,
 } from './rules'
@@ -30,6 +32,27 @@ import type { Action, State } from './rules'
 /** 造一个正在 play 的对局状态 */
 function playing(over: Partial<State>): State {
   return { ...create(1), phase: 'play', serveTicks: 0, ...over }
+}
+
+/**
+ * 按壳层节奏打一整局：玩家每 `lag` 帧才反应一次并贴向球，AI 每帧行动。
+ * lag=1 是「每帧都算出完美落点」的超人，lag=4~6 才是真实手感。
+ */
+function playOut(seed: number, lag: number): { reasons: Map<string, number> } {
+  let s = create(seed)
+  const reasons = new Map<string, number>()
+  for (let i = 0; i < 60_000 && s.phase !== 'over'; i++) {
+    if (i % lag === 0) s = reduce(s, { type: 'seek', x: s.bx })
+    const before = s.scoreP + s.scoreA
+    s = reduce(s, { type: 'tick', steps: 1 })
+    const a = aiAction(s)
+    if (a) s = reduce(s, a)
+    if (s.scoreP + s.scoreA !== before) {
+      const k = String(s.lastReason)
+      reasons.set(k, (reasons.get(k) ?? 0) + 1)
+    }
+  }
+  return { reasons }
 }
 
 function deepFreeze<T>(value: T): T {
@@ -111,6 +134,53 @@ describe('玩具网球 · 规则', () => {
     // 终局后不再推进
     const done = reduce(b, { type: 'tick', steps: 30 })
     expect(done).toEqual(b)
+  })
+
+  it('兜底规则不会抢戏：真实手感下失分几乎都由「接漏 / 出界」决定（回归）', () => {
+    // 回归：出球角度上限曾是 1.0 弧度（57°），球几乎横着飞，单次过场 109 tick，
+    // 十来拍的回合就吃掉 1200 tick，撞上当时的 MAX_PLAY_TICKS 兜底线被判
+    // 「回合超长 → 最后击球方判失」。玩家看到的现象就是「我明明碰到了却直接输」。
+    // 当时实测：正常人水平 106 次失分 **全部**是这个兜底触发的。
+    let total = 0
+    let timeout = 0
+    for (const lag of [4, 5, 6, 8]) {
+      for (let seed = 1; seed <= 8; seed++) {
+        const { reasons } = playOut(seed, lag)
+        total += [...reasons.values()].reduce((a, b) => a + b, 0)
+        timeout += reasons.get('timeout') ?? 0
+      }
+    }
+    expect(total).toBeGreaterThan(50)
+    expect(timeout / total, `timeout 占比 ${timeout}/${total}，兜底又在抢戏了`).toBeLessThan(0.05)
+  })
+
+  it('一次正常回合的长度远小于两个兜底上限', () => {
+    // 兜底只有在真正打不到时才有意义。量一次真人手感下的最长回合：
+    let worstTicks = 0
+    let worstHits = 0
+    for (let seed = 1; seed <= 8; seed++) {
+      let s = create(seed)
+      for (let i = 0; i < 60_000 && s.phase !== 'over'; i++) {
+        if (i % 6 === 0) s = reduce(s, { type: 'seek', x: s.bx })
+        s = reduce(s, { type: 'tick', steps: 1 })
+        const a = aiAction(s)
+        if (a) s = reduce(s, a)
+        worstTicks = Math.max(worstTicks, s.playTicks)
+        worstHits = Math.max(worstHits, s.rally)
+      }
+    }
+    expect(worstTicks).toBeGreaterThan(0)
+    expect(worstTicks, '真人手感下最长回合已经顶到兜底上限').toBeLessThan(MAX_PLAY_TICKS)
+    expect(worstHits, '真人手感下最长回合已经顶到兜底上限').toBeLessThan(MAX_RALLY_HITS)
+  })
+
+  it('reasonText 把三种判分原因都说成人话', () => {
+    const base = create(1)
+    expect(reasonText(base)).toBe('')
+    expect(reasonText({ ...base, lastReason: 'miss', lastPoint: 1 })).toBe('你漏接')
+    expect(reasonText({ ...base, lastReason: 'miss', lastPoint: 0 })).toBe('电脑漏接')
+    expect(reasonText({ ...base, lastReason: 'out', lastPoint: 0 })).toBe('球飞出边线，你得分')
+    expect(reasonText({ ...base, lastReason: 'timeout' })).toBe('回合太长，最后击球方判失')
   })
 
   it('AI 每一步都只从 legalActions 里选，且是合法手', () => {

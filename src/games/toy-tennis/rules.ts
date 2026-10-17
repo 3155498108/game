@@ -38,17 +38,29 @@ export const PADDLE_MAX = FIELD_W - SIDE_WALL - PADDLE_W / 2
 /** 球速：每回合递增 STEP，递增到 MAX 就封顶，避免后期不可玩 */
 export const BASE_SPEED = 7
 export const SPEED_STEP = 0.55
-export const MAX_SPEED = 15
-/** 出球角度相对「垂直于底线」的最大偏移（弧度），限制 |vy| 保证球必然穿场 */
-export const MAX_ANGLE = 1.0
+export const MAX_SPEED = 22
+/**
+ * 出球角度相对「垂直于底线」的最大偏移（弧度）。
+ *
+ * 这四个数字是一组的，改一个就要重看另外三个 —— 「球明显碰到了却判输」的根因就在这里：
+ * 角度上限曾是 1.0 弧度（57°），球几乎是**横着**飞，|vy| 只剩 v·cos(57°)≈0.54v，
+ * 单次过场要 109 tick；于是一个十来拍的回合轻松吃掉 1200 tick，
+ * 撞上当时的 MAX_PLAY_TICKS=1200 兜底线，被判成「回合超长 → 最后击球方判失」。
+ * 实测正常人水平下 106 次失分**全部**是这个兜底触发的，球其实还在好好地弹着。
+ *
+ * 现在：角度收到 0.7（40°，|vy|≈0.77v），球速上限抬到 22（打满时过场只要 30 tick，
+ * 谁都接不住，回合自然结束），两个兜底上限抬到远超真实对局。
+ * 兜底因此只在「两个每帧都能算出完美落点」的超人局里才会碰到。
+ */
+export const MAX_ANGLE = 0.7
 
 export const SERVE_DELAY = 42
 /** 先得这么多分者获胜，一局必然结束 */
 export const TARGET_SCORE = 7
-/** 单个回合最多几次击球，超过则最后击球方判失（防死循环兜底） */
-export const MAX_RALLY_HITS = 16
-/** 单个回合最多多少 tick，超过同上 */
-export const MAX_PLAY_TICKS = 1200
+/** 单个回合最多几次击球，超过则最后击球方判失（兜底，真人对局打不到这个数） */
+export const MAX_RALLY_HITS = 40
+/** 单个回合最多多少 tick，超过同上（60fps 下约 100 秒） */
+export const MAX_PLAY_TICKS = 6000
 /** 单个 tick action 最多推进的步数 */
 export const MAX_STEPS = 120
 
@@ -381,4 +393,19 @@ export function aiAction(state: State): Action | null {
 /** 人类玩家当前球拍 x */
 export function paddleX(state: State, side: Side): number {
   return side === 0 ? state.px : state.ax
+}
+
+/**
+ * 上一分是怎么结束的，写成一句给玩家看的话。
+ *
+ * 判输必须有解释。之前「球好好地弹着却突然判负」就是因为兜底规则悄悄生效、
+ * 界面又只报比分不报原因 —— 玩家唯一能看到的现象就是「我明明碰到了」。
+ */
+export function reasonText(state: State): string {
+  if (state.lastReason === 0) return ''
+  const scorer = state.lastPoint === 0 ? '你' : '电脑'
+  const loser = state.lastPoint === 0 ? '电脑' : '你'
+  if (state.lastReason === 'miss') return `${loser}漏接`
+  if (state.lastReason === 'out') return `球飞出边线，${scorer}得分`
+  return '回合太长，最后击球方判失'
 }

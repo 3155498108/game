@@ -56,10 +56,13 @@ function key(_state: State, k: string): Action | null {
 function hint(state: State): string {
   if (state.phase === 'over') {
     const who = state.winner === 0 ? '你赢了' : '电脑赢了'
-    return `${who}！本局最长回合 ${state.bestRally} 拍，点「新的一局」再战。`
+    const why = R.reasonText(state)
+    return `${who}！本局最长回合 ${state.bestRally} 拍${why ? `，最后 1 分是「${why}」` : ''}。`
   }
   if (state.phase === 'serve') {
-    return `${state.serveTo === 0 ? '对手' : '你'}将发球 · 拖动或按 ← → 移动球拍，先得 ${R.TARGET_SCORE} 分获胜`
+    const why = R.reasonText(state)
+    const base = `${state.serveTo === 0 ? '对手' : '你'}将发球 · 先得 ${R.TARGET_SCORE} 分获胜`
+    return why ? `${base} · 上一分：${why}` : base
   }
   const speed = R.speedOf(state.rally)
   return `你 ${state.scoreP} : ${state.scoreA} 电脑 · 第 ${state.rally + 1} 拍 · 球速 ${speed.toFixed(1)}`
@@ -198,12 +201,13 @@ function render(ctx: CanvasRenderingContext2D, state: State): void {
 
   if (state.phase === 'over') {
     const win = state.winner === 0
+    const why = R.reasonText(state)
     banner(
       ctx,
       VW,
       VH,
       win ? '你赢了！' : '电脑赢了',
-      `本局最长回合 ${state.bestRally} 拍`,
+      `最长回合 ${state.bestRally} 拍${why ? ` · 末分：${why}` : ''}`,
       win ? COLORS.green : COLORS.orange,
     )
   }
