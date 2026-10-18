@@ -98,16 +98,20 @@ export function other(side: Side): Side {
 
 // ---------------------------------------------------------------- 棋点拓扑
 
-/** 8 个方向的偏移（含斜向） */
+/**
+ * 4 个方向的偏移。
+ *
+ * **只保留正交，不含斜向。** 经典规则本来是 8 向都走的，但去掉斜向后：
+ * - 每个棋点的相邻格大幅减少，可被 3 只猎犬围死的落点从 2 个涨到十几个，
+ *   猎犬方从「理论上必胜但实际永远赢不了」变成真能围死；
+ * - 兔子少了两条斜插的逃逸路线，绕出犬阵这件事终于像个可执行的任务。
+ * 这两条都是实测结论，不是拍脑袋（见 DECISIONS.md）。
+ */
 const OFFSETS: readonly (readonly [number, number])[] = [
   [1, 0],
   [-1, 0],
   [0, 1],
   [0, -1],
-  [1, 1],
-  [-1, -1],
-  [1, -1],
-  [-1, 1],
 ]
 
 /**
@@ -177,6 +181,8 @@ export interface State {
   hover: number
   /** 猎犬连续横移步数（达到 STALL_LIMIT 兔子判胜） */
   sideStreak: number
+  /** 玩家执哪一方；null = 还没选，开局前不接受任何走子 */
+  playerSide: Side | null
   rng: number
 }
 
@@ -196,6 +202,7 @@ export function create(seed: number): State {
     selected: -1,
     hover: -1,
     sideStreak: 0,
+    playerSide: null,
     rng: seed | 0,
   }
 }
@@ -317,6 +324,8 @@ export function winnerOf(state: State): Winner {
 // ---------------------------------------------------------------- 动作
 
 export type Action =
+  /** 开局选阵营：决定玩家执犬还是执兔 */
+  | { type: 'choose'; side: Side }
   /** 走一步（一步 = 一个完整 action，AI 直接用它） */
   | { type: 'step'; from: number; to: number }
   /** 选中己方棋子 */
@@ -326,7 +335,14 @@ export type Action =
   /** 悬停高亮 */
   | { type: 'hover'; cell: number }
 
+/** 开局是否还在「选阵营」阶段 —— 这期间不接受任何走子 */
+export function choosing(state: State): boolean {
+  return state.playerSide === null && !state.over
+}
+
 export function isLegal(state: State, action: Action): boolean {
+  if (action.type === 'choose') return choosing(state)
+  if (choosing(state)) return false
   switch (action.type) {
     case 'clear':
     case 'hover':
@@ -343,7 +359,7 @@ export function isLegal(state: State, action: Action): boolean {
 
 /** 当前可执行的走法（AI 只允许从这里挑） */
 export function legalActions(state: State): Action[] {
-  if (state.over) return []
+  if (state.over || choosing(state)) return []
   return movesOf(state.board, state.turn).map<Action>((m) => ({ type: 'step', from: m.from, to: m.to }))
 }
 
@@ -352,8 +368,18 @@ export function walk(state: State, from: number, to: number): State {
   return reduce(state, { type: 'step', from, to })
 }
 
+/** AI 执哪一方 = 玩家没选的那一方 */
+export function aiSide(state: State): Side {
+  return state.playerSide === 'hounds' ? 'hare' : 'hounds'
+}
+
 /** 纯函数状态迁移：不修改入参（board 一律 slice 后再写） */
 export function reduce(state: State, action: Action): State {
+  if (action.type === 'choose') {
+    return choosing(state) ? { ...state, playerSide: action.side } : state
+  }
+  // 还没选阵营时，除了选边什么都不接受 —— 免得玩家在选边界面误触棋盘
+  if (choosing(state)) return state
   if (state.over && action.type !== 'clear') return state
 
   switch (action.type) {
@@ -387,8 +413,18 @@ export function reduce(state: State, action: Action): State {
       board[from] = EMPTY
       board[to] = piece
 
-      // 横移不推进阵型，连续十次就判「磨洋工」给兔子胜
+      // 横移不推进阵型，猎犬连着横移十步就算「磨洋工」，判兔子胜。
+      //
+      // **这里只统计猎犬自己的走子**：兔子每回合都要走一步，如果把兔子的落子也算成
+      // 「中断」，sideStreak 永远到不了 2，这条规则等于不存在。
+      // 资料的原话是「the Hounds move vertically ten times in a row」——数的是猎犬的
+      // 连续十次非前进走子，中间夹着兔子怎么走都算数。
+      //
+      // 这条曾经是「所有对局都 120 手平局」的真正根因：双方在第 9 手左右就互相僵住，
+      // 三只犬全部只在原列上下横移，谁也不肯往前走一步，于是没有任何一方能分出胜负，
+      // 唯一收场的是 MOVE_LIMIT 兜底判平。
       const sideways = piece === HOUND && colOf(to) === colOf(from)
+      const streak = piece !== HOUND ? state.sideStreak : sideways ? state.sideStreak + 1 : 0
       const next: State = {
         ...state,
         board,
@@ -399,7 +435,7 @@ export function reduce(state: State, action: Action): State {
         moves: state.moves + 1,
         selected: -1,
         hover: -1,
-        sideStreak: sideways ? state.sideStreak + 1 : 0,
+        sideStreak: streak,
       }
       const winner = winnerOf(next)
       return winner === 'none' ? next : { ...next, over: true, winner }
@@ -415,6 +451,14 @@ export const SEARCH_DEPTHS: readonly number[] = [1, 2, 3, 4, 5, 6]
 export const NODE_BUDGET: readonly number[] = [1_500, 4_000, 12_000, 35_000, 90_000, 200_000]
 /** 胜负分值，必须压过所有启发式项 */
 export const MATE = 100_000
+/**
+ * 电脑实际使用的搜索层数。
+ *
+ * 定在 3 是量出来的：对手开到 6 时玩家一方几乎没有赢面（实测玩家执犬 0/18，
+ * 哪怕对手只有 2 层也一样），但对手开太弱又会出现「大量 120 手平局」。
+ * 3 层能让对局在 60~120 手内分出胜负，且玩家执兔时有约四成胜率。
+ */
+export const AI_DEPTH = 3
 const ABORT = Symbol('node-limit')
 
 export interface SearchInfo {
@@ -486,17 +530,19 @@ export function aiSearch(state: State, maxDepth = 6, budget: readonly number[] =
 }
 
 /**
- * 电脑（执兔子）的动作。
+ * 电脑的动作。电脑执**玩家没选的那一方**（选了犬它就执兔，反之亦然）。
  *
- * **不是兔子回合、或已终局时必须返回 null** —— 这是 GameModule 对 aiAction 的硬契约：
- * 壳层每落一个子就会挂一次 AI 定时器，一旦这里在玩家回合也返回走法，
- * AI 就会替玩家把棋子全走光，玩家永远插不上手。
+ * **还没选阵营、不是电脑的回合、或已终局时必须返回 null** —— 这是 GameModule 对
+ * aiAction 的硬契约：壳层每落一个子就会挂一次 AI 定时器，一旦这里在玩家回合也
+ * 返回走法，AI 就会替玩家把棋子全走光，玩家永远插不上手。
+ * 玩家还没选边时更不能出手，否则开场那一步就被电脑抢走。
  *
  * `aiSearch` 本身对双方通用（自对弈测试用），门禁只加在这一层。
  */
 export function aiAction(state: State): Action | null {
-  if (state.over || state.turn !== 'hare') return null
-  const info = aiSearch(state)
+  if (state.over || state.playerSide === null) return null
+  if (state.turn === state.playerSide) return null
+  const info = aiSearch(state, AI_DEPTH)
   return info === null ? null : info.action
 }
 
@@ -529,10 +575,20 @@ function negamax(state: State, depth: number, alpha: number, beta: number, ctx: 
  * 静态评估（始终从「兔子视角」返回，越大越有利于兔子）：
  *  1. 已经绕到犬阵后面 / 已被围死 → ±MATE（实际由 winnerOf 提前判定）
  *  2. 离「绕到最左那只犬的左边」还差几列 → 越近越好
- *  3. 猎犬整体推进得越远，左边留出的空档越大 → 对兔子有利
+ *  3. **往左的空出口还剩几个** → 兔子只能往左挤才算脱出，这是它的命脉
  *  4. 身边有几格空位（猎犬围得越紧越糟）
  *  5. 紧贴着兔子的猎犬有几只 → 贴脸最危险
- *  6. 犬阵拉得越开，缝越多
+ *  6. 犬阵拉得越开，缝隙越多
+ *
+ * **第 3 项是这一版的关键。** 原先这里写的是「猎犬推进得越远、兔子越有利」
+ * （`+ maxC * 10`），方向恰好反了：猎犬向右推进是**猎犬唯一的取胜路线**
+ * ——27 个棋点里只有 (6,1)(6,3) 两格真的能被 3 犬围死，而 (0,1)(0,3)
+ * 一旦被兔子走到就已经算兔子胜，根本轮不到围。旧式子等于直接告诉搜索器
+ * 「别往前推」，实测猎犬在 96 局自对弈里 **0 胜**，连贪心乱走的兔子都围不死。
+ *
+ * 现在改记「往左的出口」：兔子脱出必须一步步往左挤，猎犬要做的就是把这些
+ * 左侧出口一个个掐掉、同时把它赶到右边。这是一条**局部但方向正确**的启发式，
+ * 不需要搜索看到几十手之后才成立。
  *
  * 这条路径每秒钟会被调用几万次（每个叶节点一次），
  * 所以只用一次线性扫描 + 预计算表，不调用 movesFrom / findPiece。
@@ -559,17 +615,28 @@ export function evaluate(board: readonly Piece[]): number {
   // 无子可动 = 已被围死
   let free = 0
   let adjacent = 0
+  let leftExit = 0
+  let deepLeftExit = 0
   for (const n of NEIGHBORS[hare]) {
-    if (board[n] === EMPTY) free++
-    else if (board[n] === HOUND) adjacent++
+    const p = board[n]
+    if (p === HOUND) adjacent++
+    else if (p === EMPTY) {
+      free++
+      // 往左的出口才是真正的逃生路线；一次能拉开两列的更值钱
+      const c = COL_OF[n]
+      if (c < hc) {
+        leftExit++
+        if (c <= hc - 2) deepLeftExit++
+      }
+    }
   }
   if (free === 0) return -MATE
 
   let v = 0
   // 离「绕到犬阵最后一只的左边」还差几列，越小越好
   v += (minC - hc) * 30
-  // 猎犬推进得越远，它左后方空出来的棋点越多
-  v += maxC * 10
+  // 往左的命脉：出口越多越有利
+  v += leftExit * 10 + deepLeftExit * 20
   // 身边空格：猎犬贴上来会直接吃掉这几分
   v += free * 9
   // 贴脸的猎犬，每只重罚
