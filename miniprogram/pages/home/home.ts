@@ -1,8 +1,8 @@
-import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../core/types'
+import { CATEGORY_LABEL, CATEGORY_ORDER, type GameMeta } from '../../core/types'
 import { canSignIn, claimSignin, formatCoins, readWallet, signinAmount } from '../../shell/coins'
 import { dailyGame, todayLabel } from '../../shell/daily'
 import { GAMES } from '../../shell/registry'
-import { formatBest, readBest } from '../../shell/storage'
+import { formatBest, readBest, readJSON, writeJSON } from '../../shell/storage'
 
 interface Card {
   id: string
@@ -18,10 +18,45 @@ interface Card {
   best: string
 }
 
-const ALL = '__all__'
+/** 一个分类分组：标题 + 该分类下的游戏 */
+interface Group {
+  key: string
+  label: string
+  items: Card[]
+}
+
+/**
+ * 「全部」的哨兵值。
+ *
+ * 与网页版 `src/shell/home.ts` 用**同一个**取值（那边也是 `'all'`），
+ * 这样存进 `gs:settings:filter` 的内容在两端是同一种形状。
+ */
+const ALL = 'all'
+
+/** 与网页版同一个 key：两端存的是同一种东西（「上次看到哪了」） */
+const FILTER_KEY = 'gs:settings:filter'
 
 /** 与网页版 `src/shell/home.ts` 同一张表 */
 const PLAYERS_LABEL: Record<string, string> = { '1': '单人', '2': '双人', ai: '人机' }
+
+/** 分类是否合法：'all' 或五个真实分类之一 */
+function isKnownCat(c: string): boolean {
+  return c === ALL || (CATEGORY_ORDER as string[]).indexOf(c) >= 0
+}
+
+function card(g: GameMeta): Card {
+  const best = readBest(g.id)
+  return {
+    id: g.id,
+    name: g.name,
+    summary: g.summary,
+    tags: g.tags,
+    category: g.category,
+    playersLabel: PLAYERS_LABEL[String(g.players)] ?? '',
+    landscape: g.orientation === 'landscape',
+    best: best ? formatBest(best) : '',
+  }
+}
 
 Page({
   data: {
@@ -30,10 +65,13 @@ Page({
     signinAmount: 0,
     today: '',
     dailyName: '',
+    /** 全部游戏数（不是筛选后的数量）——与网页版一致 */
+    total: 0,
     q: '',
     cat: ALL,
     cats: [] as Array<{ key: string; label: string }>,
-    games: [] as Card[],
+    /** 按分类分组的游戏列表 */
+    groups: [] as Group[],
     howtoOpen: false,
     howtoTitle: '',
     howto: [] as string[],
@@ -46,10 +84,20 @@ Page({
       CATEGORY_ORDER.map((c) => ({ key: c, label: CATEGORY_LABEL[c] })),
     )
     const daily = dailyGame(GAMES)
+
+    // 恢复上次的分类与搜索词。
+    // 存档被改坏（隐私模式、JSON 损坏、外部写入）时回落到默认值，不让首页开不起来。
+    const saved = readJSON<{ cat?: string; q?: string }>(FILTER_KEY, {})
+    const cat = saved && typeof saved.cat === 'string' && isKnownCat(saved.cat) ? saved.cat : ALL
+    const q = saved && typeof saved.q === 'string' ? saved.q : ''
+
     this.setData({
       cats,
       today: todayLabel(),
       dailyName: daily ? daily.name : '—',
+      total: GAMES.length,
+      cat,
+      q,
     })
     this.refresh()
   },
@@ -63,41 +111,49 @@ Page({
     const w = readWallet()
     const q = String(this.data.q || '').trim().toLowerCase()
     const cat = String(this.data.cat || ALL)
-    const games = GAMES.filter((g) => {
-      if (cat !== ALL && g.category !== cat) return false
+
+    /** 搜索命中：游戏名 / 玩法介绍 / 标签 / 分类名 */
+    const match = (g: GameMeta): boolean => {
       if (q === '') return true
       const hay = `${g.name}${g.summary}${g.tags.join('')}${g.category}`.toLowerCase()
       return hay.indexOf(q) >= 0
-    }).map((g) => {
-      const best = readBest(g.id)
-      return {
-        id: g.id,
-        name: g.name,
-        summary: g.summary,
-        tags: g.tags,
-        category: g.category,
-        playersLabel: PLAYERS_LABEL[String(g.players)] ?? '',
-        landscape: g.orientation === 'landscape',
-        best: best ? formatBest(best) : '',
-      }
-    })
+    }
+
+    // 分组规则与网页版一致：
+    // 「全部」时按分类顺序分节展示；选中了某个分类就只留那一节。
+    // 空分组不显示（否则搜索会留下一堆空标题）。
+    const groups: Group[] = CATEGORY_ORDER.filter((c) => GAMES.some((g) => g.category === c))
+      .filter((c) => cat === ALL || c === cat)
+      .map((c) => ({
+        key: c,
+        label: CATEGORY_LABEL[c],
+        items: GAMES.filter((g) => g.category === c && match(g)).map(card),
+      }))
+      .filter((x) => x.items.length > 0)
 
     this.setData({
       wallet: formatCoins(w.balance),
       canSignin: canSignIn(w),
       signinAmount: signinAmount(w),
-      games,
+      groups,
     })
   },
 
   onSearch(e: MiniEvent): void {
     this.setData({ q: String((e.detail as { value?: string }).value || '') })
     this.refresh()
+    this.saveFilter()
   },
 
   onCat(e: MiniEvent): void {
     this.setData({ cat: String(e.currentTarget.dataset.k) })
     this.refresh()
+    this.saveFilter()
+  },
+
+  /** 记住上次的分类与搜索词：下次进来还在原地 */
+  saveFilter(): void {
+    writeJSON(FILTER_KEY, { cat: this.data.cat, q: this.data.q })
   },
 
   onSignin(): void {

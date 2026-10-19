@@ -2,7 +2,7 @@
   <view class="head">
     <view class="head-l">
       <text class="title">小游戏合集</text>
-      <text class="sub">{{games.length}} 款</text>
+      <text class="sub">{{total}} 款</text>
     </view>
     <view class="head-r">
       <view class="wallet">🪙 {{wallet}}</view>
@@ -32,22 +32,36 @@
   </scroll-view>
 
   <scroll-view class="list" scroll-y>
-    <view wx:for="{{games}}" wx:key="id" class="card" data-id="{{item.id}}" bindtap="onPlay">
-      <view class="card-l">
-        <text class="card-t">{{item.name}}</text>
-        <text class="card-s">{{item.summary}}</text>
-        <view class="tags">
-          <text wx:for="{{item.tags}}" wx:for-item="t" wx:key="*this" class="tag">{{t}}</text>
-        </view>
-        <view class="tags meta">
-          <text class="tag">{{item.playersLabel}}</text>
-          <text wx:if="{{item.landscape}}" class="tag orient">横屏</text>
-          <text wx:if="{{item.best}}" class="tag best">{{item.best}}</text>
-        </view>
+    <!-- 按分类分组：标题是该分类名 + 该分类下的游戏数 -->
+    <view wx:for="{{groups}}" wx:key="key" class="group">
+      <view class="group-h">
+        <text class="group-t">{{item.label}}</text>
+        <text class="group-n">{{item.items.length}}</text>
       </view>
-      <view class="card-r" data-id="{{item.id}}" catchtap="onHowto">玩法</view>
+      <view
+        wx:for="{{item.items}}"
+        wx:for-item="g"
+        wx:key="id"
+        class="card"
+        data-id="{{g.id}}"
+        bindtap="onPlay"
+      >
+        <view class="card-l">
+          <text class="card-t">{{g.name}}</text>
+          <text class="card-s">{{g.summary}}</text>
+          <view class="tags">
+            <text wx:for="{{g.tags}}" wx:for-item="t" wx:key="*this" class="tag">{{t}}</text>
+          </view>
+          <view class="tags meta">
+            <text class="tag">{{g.playersLabel}}</text>
+            <text wx:if="{{g.landscape}}" class="tag orient">横屏</text>
+            <text wx:if="{{g.best}}" class="tag best">{{g.best}}</text>
+          </view>
+        </view>
+        <view class="card-r" data-id="{{g.id}}" catchtap="onHowto">玩法</view>
+      </view>
     </view>
-    <view wx:if="{{games.length === 0}}" class="empty">没有匹配的游戏</view>
+    <view wx:if="{{groups.length === 0}}" class="empty">没有匹配的游戏</view>
     <view class="pad"></view>
   </scroll-view>
 
