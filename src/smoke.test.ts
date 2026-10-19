@@ -1,5 +1,5 @@
-﻿/**
- * 全站冒烟测试：43 款一起过一遍**渲染层与接线**。
+/**
+ * 全站冒烟测试：44 款一起过一遍**渲染层与接线**。
  *
  * 为什么单测不够：每个游戏的 `rules.test.ts` 只驱动 `rules.ts` 的纯逻辑，
  * 覆盖不到 `index.ts` 这一层 —— `render()` 在真实 ctx 上会不会抛、两个状态之间
@@ -237,15 +237,15 @@ const BUDGET = 900
  * 规格里的游戏总数。
  *
  * 写成一个具名常量而不是散落的字面量：加游戏时要改的地方只有这一处，漏改了这里就会红，
- * 而不是各处文案悄悄变成「38 款但其实 43 款」。
+ * 而不是各处文案悄悄变成「43 款但其实 44 款」。
  */
-const GAME_COUNT = 43
+const GAME_COUNT = 44
 
 /** drive() 的结果按 id 缓存，供后续用例复用（vitest 同一文件内顺序执行） */
 const DRIVES = new Map<string, DriveResult>()
 
-describe('全站冒烟：43 款都要能跑起来', () => {
-  it('游戏数量与规格一致（43 款）', () => {
+describe('全站冒烟：44 款都要能跑起来', () => {
+  it('游戏数量与规格一致（44 款）', () => {
     expect(IDS.length).toBe(GAME_COUNT)
   })
 
@@ -267,7 +267,7 @@ describe('全站冒烟：43 款都要能跑起来', () => {
     }
   })
 
-  it('玩法介绍齐全：43 款都写了 howto，每条都是一句能单独看懂的中文', () => {
+  it('玩法介绍齐全：44 款都写了 howto，每条都是一句能单独看懂的中文', () => {
     const metas = Object.values(metaModules)
     const missing = metas.filter((m) => !m.howto || m.howto.length === 0).map((m) => m.id)
     expect(missing, `这几款没写玩法介绍：${missing.join(' / ')}`).toEqual([])

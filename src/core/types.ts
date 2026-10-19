@@ -83,7 +83,7 @@ export interface GameMeta {
    * - 3~6 条为宜。太长没人看，太短不算介绍。
    *
    * 可选是刻意的：新增游戏漏写它只是少一段说明，站点不会因此报错；
-   * 但 `src/meta.test.ts` 会把「43 款全都写了」当成契约盯着。
+   * 但 `src/smoke.test.ts` 会把「每款都写了」当成契约盯着。
    */
   howto?: string[]
 }

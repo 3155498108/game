@@ -26,7 +26,7 @@ import type { GameModule, Outcome } from './core/types'
 import { settle, START_COINS, MAX_PAYOUT, type Wallet } from './shell/coins'
 
 /**
- * 全站 43 款，含 index.ts（coins() 只挂在 GameModule 上，meta.ts 里没有）。
+ * 全站全部游戏，含 index.ts（coins() 只挂在 GameModule 上，meta.ts 里没有）。
  *
  * `eager: true` 是必须的：不加的话 glob 返回的是**异步加载函数**而不是模块本身，
  * 拿到的 `g.create` 会是 undefined——而且这个坑在 TypeScript 上完全看不出来。
@@ -78,11 +78,11 @@ function expectSane(id: string, bet: number, outcome: Outcome, g: GameModule, st
   expect(poor.balance, `${label}：破产玩家也不能被扣成负数`).toBeGreaterThanOrEqual(0)
 }
 
-describe('金币结算集成：43 款真实游戏的 coins() 都要活着穿过 settle()', () => {
+describe('金币结算集成：44 款真实游戏的 coins() 都要活着穿过 settle()', () => {
   it('注册表能收齐全部游戏，且其中有实现 coins() 的定制款', () => {
-    expect(ALL.length).toBe(43)
-    // 4 款门票制 + 5 款博彩
-    expect(CUSTOM.length).toBeGreaterThanOrEqual(9)
+    expect(ALL.length).toBe(44)
+    // 5 款门票制 + 5 款博彩
+    expect(CUSTOM.length).toBeGreaterThanOrEqual(10)
   })
 
   for (const [id, g] of ALL) {
