@@ -1,4 +1,15 @@
 {
   "$comment": "已移植到微信小程序的游戏清单。同步脚本 scripts/sync-miniprogram.mjs 只复制这里列出的游戏；漂移检查 src/miniprogram-sync.test.ts 盯着这个清单与 shell/registry.ts 是否一致。",
-  "games": ["maze", "memory", "rabbits-and-hounds", "toy-tennis"]
+  "games": [
+    "blackjack",
+    "connect-four",
+    "golf",
+    "higher-lower",
+    "maze",
+    "memory",
+    "pachinko",
+    "rabbits-and-hounds",
+    "toy-boxing",
+    "toy-tennis"
+  ]
 }

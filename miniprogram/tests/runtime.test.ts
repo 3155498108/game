@@ -23,6 +23,17 @@ import { readWallet } from '../shell/coins'
 const store = new Map<string, unknown>()
 let vibrateCount = 0
 
+/**
+ * 窗口尺寸做成可变的：横竖屏策略全靠它。
+ * 固定值的话，「竖屏游戏在横屏窗口」这一支根本没法测。
+ */
+const win = { pixelRatio: 3, windowWidth: 390, windowHeight: 844, statusBarHeight: 47 }
+
+function setWindowSize(w: number, h: number): void {
+  win.windowWidth = w
+  win.windowHeight = h
+}
+
 ;(globalThis as unknown as { wx: unknown }).wx = {
   getStorageSync: (k: string) => (store.has(k) ? store.get(k) : ''),
   setStorageSync: (k: string, v: unknown) => {
@@ -31,7 +42,7 @@ let vibrateCount = 0
   removeStorageSync: (k: string) => {
     store.delete(k)
   },
-  getWindowInfo: () => ({ pixelRatio: 3, windowWidth: 390, windowHeight: 844, statusBarHeight: 47 }),
+  getWindowInfo: () => ({ ...win }),
   vibrateShort: () => {
     vibrateCount++
   },
@@ -172,18 +183,38 @@ function spyInput(mod: unknown, seen: PointerInput[]): GameModule<unknown, unkno
 beforeEach(() => {
   store.clear()
   vibrateCount = 0
+  setWindowSize(390, 844)
 })
 
 // ---------------- 注册表 ----------------
 
 describe('注册表', () => {
-  it('试点收录 4 款游戏，且 id 与 meta 一致', () => {
-    expect(GAMES.map((g) => g.id).sort()).toEqual(['maze', 'memory', 'rabbits-and-hounds', 'toy-tennis'])
+  it('试点收录 10 款游戏，且 id 与 meta 一致', () => {
+    expect(GAMES.map((g) => g.id).sort()).toEqual([
+      'blackjack',
+      'connect-four',
+      'golf',
+      'higher-lower',
+      'maze',
+      'memory',
+      'pachinko',
+      'rabbits-and-hounds',
+      'toy-boxing',
+      'toy-tennis',
+    ])
     for (const g of GAMES) {
       expect(findMeta(g.id)?.name).toBe(g.name)
       expect(g.viewport).toEqual({ width: 720, height: 1280 })
       expect(g.howto && g.howto.length >= 3).toBe(true)
     }
+  })
+
+  it('试点同时覆盖竖屏与横屏：朝向那条路径必须一直有人走', () => {
+    // 横屏那 4 款（golf / pachinko / toy-boxing / toy-tennis）走的完全是另一条分支：
+    // 窗口尺寸、缩放、输入反算都不一样。少了它们，朝向逻辑就没人验。
+    const orients = new Set(GAMES.map((g) => g.orientation))
+    expect(orients.has('portrait')).toBe(true)
+    expect(orients.has('landscape')).toBe(true)
   })
 
   it('loadGame 能取到真正可用的模块（default 导出存在且有 create/render）', () => {
@@ -246,14 +277,129 @@ describe('缩放与坐标反算', () => {
   })
 })
 
+// ---------------- 横竖屏策略（规格第 5 条） ----------------
+
+describe('横竖屏策略', () => {
+  /** 同一款游戏，换一个朝向要求 */
+  function metaWith(orientation: 'portrait' | 'landscape'): GameMeta {
+    return { ...findMeta('maze')!, orientation }
+  }
+
+  it('竖屏游戏 + 竖屏窗口：不弹提示', () => {
+    setWindowSize(390, 844)
+    const h = makeHarness()
+    mount(h, loadGame('maze'), metaWith('portrait'), 1, 390, 600)
+    expect(h.data.rotate).toBeFalsy()
+  })
+
+  it('竖屏游戏 + 横屏窗口：弹提示、停帧、并且不吃输入', () => {
+    setWindowSize(844, 390)
+    const seen: PointerInput[] = []
+    const h = makeHarness()
+    const rt = mount(h, spyInput(loadGame('maze'), seen), metaWith('portrait'), 1, 844, 390)
+    expect(h.data.rotate).toBe(true)
+
+    // 提示层是全屏遮罩，不拦住的话玩家隔着遮罩戳一下，游戏就收到一次误触
+    rt.onTouch('down', 100, 100)
+    rt.onTouch('up', 100, 100)
+    expect(seen.length).toBe(0)
+
+    // 方向不对时游戏必须停帧，不能在背后继续跑
+    const before = h.renderCount()
+    h.frames(5)
+    expect(h.renderCount()).toBe(before)
+  })
+
+  it('横屏游戏 + 竖屏窗口：弹提示', () => {
+    setWindowSize(390, 844)
+    const h = makeHarness()
+    mount(h, loadGame('maze'), metaWith('landscape'), 1, 390, 600)
+    expect(h.data.rotate).toBe(true)
+  })
+
+  it('横屏游戏 + 横屏窗口：不弹提示', () => {
+    setWindowSize(844, 390)
+    const h = makeHarness()
+    mount(h, loadGame('maze'), metaWith('landscape'), 1, 844, 390)
+    expect(h.data.rotate).toBeFalsy()
+  })
+
+  it('转屏后自动解除提示：方向对上了就恢复正常', () => {
+    setWindowSize(390, 844)
+    const seen: PointerInput[] = []
+    const h = makeHarness()
+    const rt = mount(h, spyInput(loadGame('maze'), seen), metaWith('landscape'), 1, 390, 600)
+    expect(h.data.rotate).toBe(true)
+
+    setWindowSize(844, 390)
+    rt.resize(844, 390)
+    expect(h.data.rotate).toBe(false)
+
+    rt.onTouch('down', 100, 100)
+    rt.onTouch('up', 100, 100)
+    expect(seen.length).toBe(2)
+  })
+
+  it('「仍然继续」之后不再拦：这一局按当前方向玩下去', () => {
+    setWindowSize(844, 390)
+    const seen: PointerInput[] = []
+    const h = makeHarness()
+    const rt = mount(h, spyInput(loadGame('maze'), seen), metaWith('portrait'), 1, 844, 390)
+    expect(h.data.rotate).toBe(true)
+
+    rt.onDismissRotate()
+    expect(h.data.rotate).toBe(false)
+
+    rt.onTouch('down', 100, 100)
+    rt.onTouch('up', 100, 100)
+    expect(seen.length).toBe(2)
+  })
+
+  it('窗口够大（开发者工具里的桌面尺寸模拟器）不弹提示', () => {
+    setWindowSize(1200, 900)
+    const h = makeHarness()
+    mount(h, loadGame('maze'), metaWith('portrait'), 1, 1200, 900)
+    expect(h.data.rotate).toBeFalsy()
+  })
+
+  it('规格要求「不要硬转 canvas」：坐标反算仍按 720×1280 逻辑分辨率', () => {
+    setWindowSize(844, 390)
+    const seen: PointerInput[] = []
+    const h = makeHarness()
+    const rt = mount(h, spyInput(loadGame('maze'), seen), metaWith('landscape'), 1, 844, 390)
+    rt.onTouch('down', 422, 195)
+    rt.onTouch('up', 422, 195)
+    const last = seen[seen.length - 1]
+    // 若画布被硬转成 1280×720，这里的中心会是 (640, 360)
+    expect(last.x).toBeCloseTo(360, 3)
+    expect(last.y).toBeCloseTo(640, 3)
+  })
+})
+
 // ---------------- 真实游戏跑起来 ----------------
 
-describe('四款游戏都能在替身上完整跑起来', () => {
+/**
+ * 让窗口方向与游戏要求一致，并返回该用的画布尺寸。
+ *
+ * 方向不符时壳层会弹旋转提示并停帧——那是**正确行为**（规格第 5 条），
+ * 所以跑游戏之前必须先把窗口摆正，否则测的其实是一块被遮住的画布。
+ */
+function fitWindow(meta: GameMeta): [number, number] {
+  if (meta.orientation === 'landscape') {
+    setWindowSize(844, 390)
+    return [844, 390]
+  }
+  setWindowSize(390, 844)
+  return [390, 600]
+}
+
+describe('已移植游戏都能在替身上完整跑起来', () => {
   it.each(GAMES.map((g) => [g.id] as const))('%s：mount 后渲染不抛，且提示区与控件区都有数据', (id) => {
     const meta = findMeta(id)!
     const mod = loadGame(id)
     const h = makeHarness()
-    mount(h, mod as unknown as GameModule<unknown, unknown>, meta, 7)
+    const [w, hgt] = fitWindow(meta)
+    mount(h, mod as unknown as GameModule<unknown, unknown>, meta, 7, w, hgt)
 
     expect(h.renderCount()).toBeGreaterThan(0)
     expect(typeof h.data.hint).toBe('string')
@@ -306,7 +452,9 @@ describe('四款游戏都能在替身上完整跑起来', () => {
     const meta = findMeta('toy-tennis')!
     const mod = loadGame('toy-tennis')
     const h = makeHarness()
-    mount(h, mod as unknown as GameModule<unknown, unknown>, meta, 11)
+    // 玩具网球是横屏游戏，窗口得先摆成横屏，否则壳层会弹旋转提示并停帧
+    const [w, hgt] = fitWindow(meta)
+    mount(h, mod as unknown as GameModule<unknown, unknown>, meta, 11, w, hgt)
     const before = h.renderCount()
     h.frames(30)
     expect(h.renderCount()).toBeGreaterThan(before)

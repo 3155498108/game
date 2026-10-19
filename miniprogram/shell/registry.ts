@@ -12,25 +12,47 @@
  * - 出路：等游戏多到主包装不下时（2MB 上限），把这些 import 拆进**分包**，
  *   由分包异步化在运行时按需加载——那才是小程序版的「按需加载」等价物。
  *
- * 目前试点只有 4 款，全部进主包，体积可以忽略。
+ * 清单与 `miniprogram/ported-games.json` 必须一致，这条一致性由
+ * `src/miniprogram-sync.test.ts` 盯着：加游戏时改了清单忘了注册（或反之），
+ * 测试会直接变红——玩家点不到的游戏和注册表里指向不存在文件的条目，都是静默故障。
+ *
+ * 目前试点 10 款，全部进主包，体积可以忽略。
  */
 import type { GameMeta, GameModule } from '../core/types'
 
+import blackjackMeta from '../games/blackjack/meta'
+import blackjackGame from '../games/blackjack/index'
+import connectFourMeta from '../games/connect-four/meta'
+import connectFourGame from '../games/connect-four/index'
+import golfMeta from '../games/golf/meta'
+import golfGame from '../games/golf/index'
+import higherLowerMeta from '../games/higher-lower/meta'
+import higherLowerGame from '../games/higher-lower/index'
 import mazeMeta from '../games/maze/meta'
 import mazeGame from '../games/maze/index'
 import memoryMeta from '../games/memory/meta'
 import memoryGame from '../games/memory/index'
+import pachinkoMeta from '../games/pachinko/meta'
+import pachinkoGame from '../games/pachinko/index'
 import rabbitsMeta from '../games/rabbits-and-hounds/meta'
 import rabbitsGame from '../games/rabbits-and-hounds/index'
+import boxingMeta from '../games/toy-boxing/meta'
+import boxingGame from '../games/toy-boxing/index'
 import tennisMeta from '../games/toy-tennis/meta'
 import tennisGame from '../games/toy-tennis/index'
 
 type AnyModule = GameModule<any, any>
 
 const MODULES: Record<string, AnyModule> = {
+  [blackjackMeta.id]: blackjackGame,
+  [connectFourMeta.id]: connectFourGame,
+  [golfMeta.id]: golfGame,
+  [higherLowerMeta.id]: higherLowerGame,
   [mazeMeta.id]: mazeGame,
   [memoryMeta.id]: memoryGame,
+  [pachinkoMeta.id]: pachinkoGame,
   [rabbitsMeta.id]: rabbitsGame,
+  [boxingMeta.id]: boxingGame,
   [tennisMeta.id]: tennisGame,
 }
 

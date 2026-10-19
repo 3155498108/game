@@ -20,6 +20,10 @@ declare const wx: {
     statusBarHeight: number
   }
 
+  /** 屏幕旋转时触发。`size` 是新的窗口尺寸，壳层据此重新量画布 */
+  onWindowResize(cb: (res: { size: { windowWidth: number; windowHeight: number } }) => void): void
+  offWindowResize(cb?: (res: { size: { windowWidth: number; windowHeight: number } }) => void): void
+
   // ---- 节点查询 ----
   createSelectorQuery(): {
     select(selector: string): {

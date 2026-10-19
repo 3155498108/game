@@ -11,6 +11,11 @@
       bindtouchcancel="onTouchCancel"
     ></canvas>
     <view wx:if="{{missing}}" class="missing">找不到这款游戏</view>
+    <view wx:if="{{rotate}}" class="rotate-tip">
+      <view class="phone {{orientation}}"></view>
+      <text class="rotate-t">本游戏需要{{want}}游玩，请旋转设备</text>
+      <view class="btn ghost rotate-x" bindtap="onDismissRotate">仍然继续</view>
+    </view>
   </view>
 
   <view class="hint">{{hint}}</view>

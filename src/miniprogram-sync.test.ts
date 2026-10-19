@@ -137,12 +137,31 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
 
   it('游戏逻辑里没有浏览器专属 API', () => {
     // rules.ts 与 core/ 是纯逻辑：这些 API 一旦出现，小程序上会直接崩或静默失效
-    const forbidden = [/\bdocument\b/, /\bwindow\b/, /\blocalStorage\b/, /\bMath\.random\b/, /\bnew\s+Date\b/]
+    //
+    // 匹配的是**全局对象的用法**而不是「文件里出现了这个词」：
+    // `window` 在 toy-boxing 里是领域词（时机窗口：state.phase === 'window'、spec.window），
+    // 用 `\bwindow\b` 去扫会误报——而**一个会误报的检查比没有检查更糟**：
+    // 大家会习惯性地加白名单，而不是去修检查本身。
+    //
+    // 所以规则是「前面不能是 . 或标识符字符，后面必须紧跟 . 或 [」：
+    //   window.foo      → 命中（全局 window）
+    //   spec.window     → 不命中（前面是 .，是别的对象的属性）
+    //   'window'        → 不命中（后面是引号）
+    //   window: number  → 不命中（后面是冒号，是类型字段名）
+    const forbidden = [
+      /(?<![.\w$])document\s*[.[]/,
+      /(?<![.\w$])window\s*[.[]/,
+      /(?<![.\w$])localStorage\s*[.[]/,
+      /(?<![.\w$])performance\s*[.[]/,
+      /\bMath\s*\.\s*random\b/,
+      /\bnew\s+Date\b/,
+    ]
     const bad: string[] = []
-    for (const key of expectedShared()) {
-      const isCore = key.startsWith('/miniprogram/core/')
-      const isRules = /^\/miniprogram\/games\/[^/]+\/rules\.ts$/.test(key)
-      if (!isCore && !isRules) continue
+    const scope = [
+      ...Object.keys(miniCore),
+      ...Object.keys(miniGames).filter((k) => /\/rules\.ts$/.test(k)),
+    ]
+    for (const key of scope) {
       const body = stripComments(ALL[key])
       for (const re of forbidden) {
         if (re.test(body)) bad.push(`${key} 命中 ${re.source}`)
@@ -152,11 +171,20 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
   })
 
   it('渲染层里没有浏览器专属 API（performance 除外，它有垫片）', () => {
-    const forbidden = [/\bdocument\b/, /\bwindow\b/, /\blocalStorage\b/, /AudioContext/]
+    const forbidden = [
+      /(?<![.\w$])document\s*[.[]/,
+      /(?<![.\w$])window\s*[.[]/,
+      /(?<![.\w$])localStorage\s*[.[]/,
+      /\bAudioContext\b/,
+    ]
     const bad: string[] = []
-    for (const key of expectedShared()) {
-      const isRender = key.startsWith('/miniprogram/render/') || /^\/miniprogram\/games\/[^/]+\/index\.ts$/.test(key)
-      if (!isRender) continue
+    // 扫的是小程序侧**实际存在的**文件，包括手写的 render/audio.ts——
+    // 它不参与复制，但同样不该出现浏览器 API
+    const scope = [
+      ...Object.keys(miniRender),
+      ...Object.keys(miniGames).filter((k) => /\/index\.ts$/.test(k)),
+    ]
+    for (const key of scope) {
       const body = stripComments(ALL[key])
       for (const re of forbidden) {
         if (re.test(body)) bad.push(`${key} 命中 ${re.source}`)

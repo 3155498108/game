@@ -66,6 +66,8 @@ export class Runtime<S = unknown, A = unknown> {
   private cssH = 1
   private pressed = false
   private active = false
+  private rotateShown = false
+  private rotateDismissed = false
   private lastHint = ''
   private lastCtrlSig = ''
   private ctrlList: Array<CtrlItem<A>> = []
@@ -102,7 +104,7 @@ export class Runtime<S = unknown, A = unknown> {
   }
 
   start(): void {
-    if (this.running) return
+    if (this.running || this.rotateShown) return
     this.running = true
     this.last = 0
     this.dirty = true
@@ -158,8 +160,45 @@ export class Runtime<S = unknown, A = unknown> {
     this.scale = Math.min(this.cssW / vp.width, this.cssH / vp.height)
     this.ox = (this.cssW - vp.width * this.scale) / 2
     this.oy = (this.cssH - vp.height * this.scale) / 2
+    this.checkOrientation()
     this.dirty = true
-    this.draw()
+    if (!this.rotateShown) this.draw()
+  }
+
+  /**
+   * 横竖屏策略（规格第 5 条）。
+   *
+   * 规则原文：「依据 `orientation` 字段。若当前视口方向与游戏要求不符，显示旋转提示层，
+   * **不要硬转 canvas**。」——所以这里只做两件事：判定方向、弹提示，
+   * **不碰画布的旋转**。所有游戏的逻辑分辨率都是 720×1280，提示层的作用是
+   * 让玩家把设备转成游戏要求的方向，而不是把画面转过来。
+   *
+   * 「是不是手机」这一项，网页版用 `matchMedia('(pointer: coarse)')` 判粗指针，
+   * 小程序没有这个 API——但也不需要：页面里根本没有鼠标，
+   * 唯一会被误伤的是开发者工具里被拉成桌面尺寸的模拟器窗口。
+   * 这里改用**窗口短边**判定（`< 820` CSS px，与网页版同一个门限）：
+   * 真机短边必然远小于 820，而桌面尺寸的模拟器窗口短边会超过它。
+   */
+  private checkOrientation(): void {
+    const o = this.meta.orientation
+    const info = wx.getWindowInfo()
+    const w = info.windowWidth
+    const h = info.windowHeight
+    const phoneish = Math.min(w, h) < 820
+    const landscape = w > h
+    const mismatch = phoneish && ((o === 'portrait' && landscape) || (o === 'landscape' && !landscape))
+    const show = mismatch && !this.rotateDismissed
+    if (show === this.rotateShown) return
+    this.rotateShown = show
+    this.host.setData({ rotate: show })
+    if (show) this.stop()
+    else this.start()
+  }
+
+  /** 玩家点了「仍要继续」：记住这次不再拦，按当前方向继续玩 */
+  onDismissRotate(): void {
+    this.rotateDismissed = true
+    this.resize(this.cssW, this.cssH)
   }
 
   // ---------------- 输入 ----------------
@@ -169,6 +208,9 @@ export class Runtime<S = unknown, A = unknown> {
    * 减去 letterbox 偏移再除以缩放，即为游戏逻辑坐标——和网页版同一套公式。
    */
   onTouch(kind: PointerInput['kind'], x: number, y: number): void {
+    // 旋转提示层挡着的时候不吃输入——提示层是全屏遮罩，
+    // 不拦住的话玩家隔着遮罩戳一下，游戏就收到了一次误触
+    if (this.rotateShown) return
     unlockAudio()
     if (kind === 'down') {
       if (this.active) return

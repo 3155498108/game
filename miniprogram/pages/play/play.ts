@@ -18,6 +18,34 @@ let daily = false
 /** canvas 左上角在页面中的位置，用于把 clientX/clientY 换算成画布局部坐标 */
 let rectLeft = 0
 let rectTop = 0
+/** 屏幕旋转时要用同一个回调去解绑，所以挂在模块级 */
+let onWindowResize: ((res: { size: { windowWidth: number; windowHeight: number } }) => void) | null = null
+
+/**
+ * 量一次画布尺寸并交给 runtime。
+ *
+ * 单独抽出来是因为**屏幕旋转后必须重新量**：`pageOrientation` 是 auto，
+ * 转屏时页面整体重排，画布的 CSS 尺寸变了，而 runtime 的缩放系数是按旧尺寸算的。
+ * 只把 `wx.onWindowResize` 给的窗口尺寸丢进去是不够的——
+ * 画布在页面里占的是「舞台」那块，不是整个窗口。
+ */
+function measureCanvas(onSize: (node: CanvasNode, w: number, h: number) => void): void {
+  wx.createSelectorQuery()
+    .select('#cv')
+    .fields({ node: true, size: true, rect: true })
+    .exec((res: unknown[]) => {
+      const r = (res && res[0]) as
+        | { node?: CanvasNode; width?: number; height?: number; left?: number; top?: number }
+        | undefined
+      if (!r || !r.node || !r.width || !r.height) {
+        console.error('[play] canvas 节点没拿到，检查 type="2d" 与基础库版本')
+        return
+      }
+      rectLeft = r.left ?? 0
+      rectTop = r.top ?? 0
+      onSize(r.node, r.width, r.height)
+    })
+}
 
 /**
  * 触摸点取值。优先用画布自带的 `x/y`（相对 canvas），
@@ -51,6 +79,9 @@ Page({
     toast: '',
     toastHidden: true,
     missing: false,
+    rotate: false,
+    orientation: 'portrait',
+    want: '竖屏',
     howtoOpen: false,
     howto: [] as string[],
   },
@@ -66,28 +97,29 @@ Page({
     mod = loadGame(id)
     // 每日挑战用当天日期做种子，全天固定同一局；普通局每次进页面换一张
     seed = daily ? todaySeed() : newSeed()
-    this.setData({ title: meta.name, howto: meta.howto ?? [] })
+    this.setData({
+      title: meta.name,
+      howto: meta.howto ?? [],
+      // 旋转提示层要用：图标朝向与提示文案都跟着游戏要求的朝向走
+      orientation: meta.orientation,
+      want: meta.orientation === 'portrait' ? '竖屏' : '横屏',
+    })
     wx.setNavigationBarTitle({ title: meta.name })
   },
 
   onReady(): void {
     if (!mod || !meta) return
-    wx.createSelectorQuery()
-      .select('#cv')
-      .fields({ node: true, size: true, rect: true })
-      .exec((res: unknown[]) => {
-        const r = (res && res[0]) as
-          | { node?: CanvasNode; width?: number; height?: number; left?: number; top?: number }
-          | undefined
-        if (!r || !r.node || !r.width || !r.height) {
-          console.error('[play] canvas 节点没拿到，检查 type="2d" 与基础库版本')
-          return
-        }
-        rectLeft = r.left ?? 0
-        rectTop = r.top ?? 0
-        rt = new Runtime(mod as AnyModule, meta as GameMeta, seed, daily, r.node, this)
-        rt.mount(r.width, r.height)
-      })
+    measureCanvas((node, w, h) => {
+      rt = new Runtime(mod as AnyModule, meta as GameMeta, seed, daily, node, this)
+      rt.mount(w, h)
+    })
+
+    // 屏幕旋转：页面重排 → 重新量画布 → runtime 重算缩放与朝向
+    onWindowResize = () => {
+      if (!rt) return
+      measureCanvas((_node, w, h) => rt?.resize(w, h))
+    }
+    wx.onWindowResize(onWindowResize)
   },
 
   // 切后台停帧，省电；小程序切回前台再跑起来
@@ -102,6 +134,10 @@ Page({
   onUnload(): void {
     rt?.destroy()
     rt = null
+    if (onWindowResize) {
+      wx.offWindowResize(onWindowResize)
+      onWindowResize = null
+    }
   },
 
   // ---------------- 触摸 ----------------
@@ -125,6 +161,12 @@ Page({
     rt?.onCancel()
   },
 
+  // ---------------- 旋转提示 ----------------
+
+  onDismissRotate(): void {
+    rt?.onDismissRotate()
+  },
+
   // ---------------- 控件 ----------------
 
   onCtrl(e: MiniEvent): void {
@@ -142,7 +184,6 @@ Page({
   onHowto(): void {
     this.setData({ howtoOpen: true })
   },
-
   onCloseHowto(): void {
     this.setData({ howtoOpen: false })
   },
