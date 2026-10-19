@@ -2,6 +2,7 @@ import { CATEGORY_LABEL, CATEGORY_ORDER } from '../../core/types'
 import { canSignIn, claimSignin, formatCoins, readWallet, signinAmount } from '../../shell/coins'
 import { dailyGame, todayLabel } from '../../shell/daily'
 import { GAMES } from '../../shell/registry'
+import { formatBest, readBest } from '../../shell/storage'
 
 interface Card {
   id: string
@@ -9,9 +10,18 @@ interface Card {
   summary: string
   tags: string[]
   category: string
+  /** 玩家数：单人 / 双人 / 人机 */
+  playersLabel: string
+  /** 横屏游戏要在列表页就标出来——玩家进游戏前就该知道要转设备 */
+  landscape: boolean
+  /** 本机最佳成绩，没打过就没有 */
+  best: string
 }
 
 const ALL = '__all__'
+
+/** 与网页版 `src/shell/home.ts` 同一张表 */
+const PLAYERS_LABEL: Record<string, string> = { '1': '单人', '2': '双人', ai: '人机' }
 
 Page({
   data: {
@@ -58,7 +68,19 @@ Page({
       if (q === '') return true
       const hay = `${g.name}${g.summary}${g.tags.join('')}${g.category}`.toLowerCase()
       return hay.indexOf(q) >= 0
-    }).map((g) => ({ id: g.id, name: g.name, summary: g.summary, tags: g.tags, category: g.category }))
+    }).map((g) => {
+      const best = readBest(g.id)
+      return {
+        id: g.id,
+        name: g.name,
+        summary: g.summary,
+        tags: g.tags,
+        category: g.category,
+        playersLabel: PLAYERS_LABEL[String(g.players)] ?? '',
+        landscape: g.orientation === 'landscape',
+        best: best ? formatBest(best) : '',
+      }
+    })
 
     this.setData({
       wallet: formatCoins(w.balance),

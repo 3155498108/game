@@ -16,6 +16,9 @@ import { GAMES, findMeta, loadGame } from '../shell/registry'
 import { readBest } from '../shell/storage'
 import { readWallet } from '../shell/coins'
 
+/** 网页版的游戏清单：唯一真相源，用来断言小程序覆盖了全部游戏 */
+const webMetaFiles = import.meta.glob('/src/games/*/meta.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
+
 // ---------------- wx 替身 ----------------
 // 必须在被测模块调用之前装好。模块里对 wx 的访问都发生在**函数调用时**而非 import 时，
 // 所以这里放在文件顶层执行即可，不需要 beforeAll。
@@ -189,19 +192,16 @@ beforeEach(() => {
 // ---------------- 注册表 ----------------
 
 describe('注册表', () => {
-  it('试点收录 10 款游戏，且 id 与 meta 一致', () => {
-    expect(GAMES.map((g) => g.id).sort()).toEqual([
-      'blackjack',
-      'connect-four',
-      'golf',
-      'higher-lower',
-      'maze',
-      'memory',
-      'pachinko',
-      'rabbits-and-hounds',
-      'toy-boxing',
-      'toy-tennis',
-    ])
+  it('小程序收录网页版的全部游戏，且 id 与 meta 一致', () => {
+    // 网页版的游戏目录是唯一真相源（注册表用 import.meta.glob 自动发现），
+    // 小程序这边是生成的。两者必须覆盖**同一批**游戏——
+    // 少一款就是「小程序上没有这款游戏」，多一款就是「小程序上有但网页版没有」。
+    const webIds = Object.keys(webMetaFiles)
+      .map((k) => /^\/src\/games\/([^/]+)\//.exec(k)?.[1] ?? '')
+      .filter(Boolean)
+      .sort()
+    expect(webIds.length).toBeGreaterThan(0)
+    expect(GAMES.map((g) => g.id).sort()).toEqual(webIds)
     for (const g of GAMES) {
       expect(findMeta(g.id)?.name).toBe(g.name)
       expect(g.viewport).toEqual({ width: 720, height: 1280 })
@@ -210,7 +210,7 @@ describe('注册表', () => {
   })
 
   it('试点同时覆盖竖屏与横屏：朝向那条路径必须一直有人走', () => {
-    // 横屏那 4 款（golf / pachinko / toy-boxing / toy-tennis）走的完全是另一条分支：
+    // 横屏那 10 款走的完全是另一条分支：
     // 窗口尺寸、缩放、输入反算都不一样。少了它们，朝向逻辑就没人验。
     const orients = new Set(GAMES.map((g) => g.orientation))
     expect(orients.has('portrait')).toBe(true)

@@ -162,6 +162,21 @@
   font-size: 20rpx;
 }
 
+/* 第二行：玩家数 / 横屏 / 最佳成绩 */
+.tags.meta {
+  margin-top: 8rpx;
+}
+
+.tag.orient {
+  background: #3a2f52;
+  color: #c3a6ff;
+}
+
+.tag.best {
+  background: #1d3a35;
+  color: #4fd1c5;
+}
+
 .card-r {
   display: flex;
   align-items: center;

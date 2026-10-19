@@ -32,13 +32,41 @@ const srcGames = import.meta.glob('/src/games/**/!(*.test).ts', { query: '?raw',
 const miniCore = import.meta.glob('/miniprogram/core/*.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
 const miniRender = import.meta.glob('/miniprogram/render/*.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
 const miniGames = import.meta.glob('/miniprogram/games/**/*.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
+const miniShell = import.meta.glob('/miniprogram/shell/*.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
 const manifestRaw = import.meta.glob('/miniprogram/ported-games.json', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
 const registryRaw = import.meta.glob('/miniprogram/shell/registry.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
+
+/**
+ * 共享层**允许**依赖的壳层模块（路径相对 miniprogram/ 根）。
+ *
+ * 目前只有一处越层：`games/mahjong-match/index.ts` 要把「每关最少步数 / 最快用时」
+ * 存到本地，于是 import 了 `shell/storage`。
+ *
+ * 这是网页版留下来的**分层欠账**（共享层本该与站点壳无关），
+ * 但它不是「碰巧能跑」——小程序侧也有一个同名同 API 的 `shell/storage.ts`，
+ * 而 `tsc` 会对着它做类型检查，所以 API 一改就立刻编译失败。
+ *
+ * 把它写进白名单，是把「碰巧」变成「有契约」：
+ * 以后共享层再越层依赖别的东西，测试会直接变红，
+ * 而这一处会有人知道它是**已登记的债**，不是意外。
+ *
+ * 正解是把存储搬进 `core/` 并注入后端（那样连这一处也能消掉），
+ * 但那要动网页版壳层的 runtime / home / play，风险大于收益，留待以后。
+ */
+const SHELL_DEPS = new Set(['shell/storage.ts'])
 
 /** 平台专属、刻意不与网页版同步的文件 */
 const HAND_WRITTEN = new Set(['/miniprogram/render/audio.ts'])
 
-const ALL: Record<string, string> = { ...srcCore, ...srcRender, ...srcGames, ...miniCore, ...miniRender, ...miniGames }
+const ALL: Record<string, string> = {
+  ...srcCore,
+  ...srcRender,
+  ...srcGames,
+  ...miniCore,
+  ...miniRender,
+  ...miniGames,
+  ...miniShell,
+}
 
 function portedGames(): string[] {
   const raw = manifestRaw['/miniprogram/ported-games.json']
@@ -121,7 +149,7 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
     }
   })
 
-  it('相对 import 在小程序侧都能解析到文件', () => {
+  it('相对 import 在小程序侧都能解析到文件，且不越层', () => {
     const bad: string[] = []
     for (const key of expectedShared()) {
       const base = key.slice(0, key.lastIndexOf('/'))
@@ -129,10 +157,27 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
         const spec = m[1]
         const target = spec.endsWith('.ts') ? spec : `${spec}.ts`
         const resolved = normalize(`${base}/${target}`)
-        if (ALL[resolved] === undefined) bad.push(`${key} 里的 import '${spec}' 解析不到`)
+        if (ALL[resolved] === undefined) {
+          bad.push(`${key} 里的 import '${spec}' 解析不到`)
+          continue
+        }
+        // 越层检查：共享层只能依赖共享层，或者白名单里登记过的壳层模块
+        const inShared =
+          resolved.startsWith('/miniprogram/core/') ||
+          resolved.startsWith('/miniprogram/render/') ||
+          resolved.startsWith('/miniprogram/games/')
+        if (!inShared && !SHELL_DEPS.has(resolved.replace('/miniprogram/', ''))) {
+          bad.push(`${key} 越层依赖了 ${resolved}（不在 SHELL_DEPS 白名单里）`)
+        }
       }
     }
     expect(bad).toEqual([])
+  })
+
+  it('白名单里的壳层模块，小程序侧必须真的存在', () => {
+    for (const dep of SHELL_DEPS) {
+      expect(ALL[`/miniprogram/${dep}`], `小程序侧缺少 ${dep}`).toBeTruthy()
+    }
   })
 
   it('游戏逻辑里没有浏览器专属 API', () => {

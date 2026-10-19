@@ -2,7 +2,7 @@
   <view class="head">
     <view class="head-l">
       <text class="title">小游戏合集</text>
-      <text class="sub">{{games.length}} 款 · 试点版</text>
+      <text class="sub">{{games.length}} 款</text>
     </view>
     <view class="head-r">
       <view class="wallet">🪙 {{wallet}}</view>
@@ -38,6 +38,11 @@
         <text class="card-s">{{item.summary}}</text>
         <view class="tags">
           <text wx:for="{{item.tags}}" wx:for-item="t" wx:key="*this" class="tag">{{t}}</text>
+        </view>
+        <view class="tags meta">
+          <text class="tag">{{item.playersLabel}}</text>
+          <text wx:if="{{item.landscape}}" class="tag orient">横屏</text>
+          <text wx:if="{{item.best}}" class="tag best">{{item.best}}</text>
         </view>
       </view>
       <view class="card-r" data-id="{{item.id}}" catchtap="onHowto">玩法</view>

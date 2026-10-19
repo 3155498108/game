@@ -24,6 +24,7 @@
  *   src/core/*.ts              → miniprogram/core/          全部
  *   src/render/*.ts            → miniprogram/render/        除 audio.ts 外全部
  *   src/games/<已移植>/*.ts    → miniprogram/games/<id>/    只复制清单里的游戏
+ *   移植清单                   → miniprogram/shell/registry.ts  **生成**
  *
  * ## 三个刻意的不对称
  *
@@ -34,6 +35,18 @@
  *
  * 复制是**逐字节**的，不做任何改写。共享层与网页版保持零差异，
  * 这样「两版要不要分仓库」这个决定随时可以反悔。
+ *
+ * ## 注册表为什么是生成的
+ *
+ * 网页版的注册表用 `import.meta.glob` 自动发现游戏目录——加游戏零改动。
+ * 小程序没有这个能力：打包器要求依赖**静态可分析**，写成 `import(变量)` 或
+ * 运行时按路径 `require` 都会在真机上直接失败。
+ *
+ * 手工维护 44 款 × 2 行 import 是 88 行噪声，而且**清单和注册表会漂移**
+ * （改了清单忘了注册，玩家就点不到那款游戏；或者注册了不存在的 id，直接崩）。
+ *
+ * 所以注册表**由清单生成**。这与网页版的 `import.meta.glob` 是同一个目的：
+ * **让「加一款游戏」不需要改站点壳**。区别只是小程序那边用生成代替自动发现。
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -67,6 +80,11 @@ function listTs(dir) {
     .sort()
 }
 
+/** id → 合法标识符片段：rabbits-and-hounds → rabbitsAndHounds */
+function camel(id) {
+  return id.replace(/[-_]+([a-zA-Z0-9])/g, (_, c) => c.toUpperCase()).replace(/[^a-zA-Z0-9]/g, '')
+}
+
 /** 算出「该复制哪些文件」：返回 [{ from, to }] */
 function plan(games) {
   const files = []
@@ -91,6 +109,87 @@ function plan(games) {
   return files
 }
 
+/** 生成注册表源码。清单是唯一真相源，这里是它在小程序侧的静态展开。 */
+function renderRegistry(games) {
+  const sorted = [...games].sort()
+  const names = new Map()
+  for (const id of sorted) {
+    const base = camel(id)
+    if (!base) throw new Error(`游戏 id 非法：${id}`)
+    if (names.has(base)) {
+      throw new Error(`游戏 id 撞名：${id} 与 ${names.get(base)} 都变成了标识符 ${base}`)
+    }
+    names.set(base, id)
+  }
+
+  const imports = sorted
+    .map((id) => {
+      const b = camel(id)
+      return `import ${b}Meta from '../games/${id}/meta'\nimport ${b}Game from '../games/${id}/index'`
+    })
+    .join('\n')
+
+  const entries = sorted.map((id) => `  [${camel(id)}Meta.id]: ${camel(id)}Game,`).join('\n')
+
+  return `/**
+ * 游戏注册表。
+ *
+ * ⚠️ **本文件由 \`scripts/sync-miniprogram.mjs\` 自动生成，请勿手工编辑。**
+ *
+ *    要加游戏：把 id 加进 \`miniprogram/ported-games.json\`，然后跑 \`npm run sync:mini\`。
+ *    手工改这里的话，下一次同步会被覆盖——而且清单与注册表一旦对不上，
+ *    要么玩家点不到那款游戏，要么注册表指向不存在的文件直接崩。
+ *
+ * ## 为什么是生成而不是手写
+ *
+ * 网页版的注册表用 \`import.meta.glob\` 自动发现游戏目录，加游戏零改动。
+ * 小程序没有这个能力：打包器要求依赖**静态可分析**，\`import(变量)\` 或运行时
+ * 按路径 \`require\` 都会在真机上直接失败。手工维护 44 款 × 2 行 import 是 88 行噪声。
+ *
+ * 所以这里用**生成**来达到同一个目的：让「加一款游戏」不需要改站点壳。
+ * 区别只是小程序那边用生成代替自动发现。
+ */
+import type { GameMeta, GameModule } from '../core/types'
+
+${imports}
+
+type AnyModule = GameModule<any, any>
+
+const MODULES: Record<string, AnyModule> = {
+${entries}
+}
+
+export const GAMES: GameMeta[] = Object.keys(MODULES)
+  .map((id) => MODULES[id])
+  .map((g) => {
+    const m = g as unknown as GameMeta
+    return {
+      id: m.id,
+      name: m.name,
+      category: m.category,
+      tags: m.tags,
+      viewport: m.viewport,
+      orientation: m.orientation,
+      players: m.players,
+      summary: m.summary,
+      howto: m.howto,
+    }
+  })
+  .sort((a, b) => (a.id < b.id ? -1 : 1))
+
+export function findMeta(id: string): GameMeta | undefined {
+  return GAMES.find((g) => g.id === id)
+}
+
+/** 小程序里所有游戏都已打进包，没有异步加载这一步 */
+export function loadGame(id: string): AnyModule {
+  const m = MODULES[id]
+  if (!m) throw new Error(\`未找到游戏：\${id}\`)
+  return m
+}
+`
+}
+
 function sameBytes(a, b) {
   if (!existsSync(a) || !existsSync(b)) return false
   const x = readFileSync(a)
@@ -109,6 +208,11 @@ const changed = []
 for (const f of files) {
   if (!sameBytes(f.from, f.to)) changed.push(f)
 }
+
+// 注册表：生成物，同样参与漂移检查
+const registryPath = join(MINI, 'shell', 'registry.ts')
+const registryContent = renderRegistry(games)
+const registryChanged = !existsSync(registryPath) || readFileSync(registryPath, 'utf8') !== registryContent
 
 // 孤儿检查：miniprogram/{core,render,games} 下不该有计划外的文件
 const planned = new Set(files.map((f) => rel(f.to)))
@@ -130,13 +234,16 @@ for (const dir of ['core', 'render', 'games']) {
 }
 
 if (CHECK_ONLY) {
-  if (changed.length === 0 && orphans.length === 0) {
-    console.log(`[sync] 共享层无漂移（${files.length} 个文件）`)
+  const problems = []
+  for (const f of changed) problems.push(`  差异  ${rel(f.to)}`)
+  for (const o of orphans) problems.push(`  多余  ${o}`)
+  if (registryChanged) problems.push('  差异  miniprogram/shell/registry.ts（注册表与移植清单不同步）')
+  if (problems.length === 0) {
+    console.log(`[sync] 共享层无漂移（${files.length} 个文件 + 1 份生成注册表）`)
     process.exit(0)
   }
   console.error('[sync] 共享层有漂移：')
-  for (const f of changed) console.error(`  差异  ${rel(f.to)}`)
-  for (const o of orphans) console.error(`  多余  ${o}`)
+  for (const p of problems) console.error(p)
   console.error('\n修复：node scripts/sync-miniprogram.mjs')
   process.exit(1)
 }
@@ -146,6 +253,10 @@ for (const f of changed) {
   mkdirSync(dirname(f.to), { recursive: true })
   writeFileSync(f.to, readFileSync(f.from))
   console.log(`  同步  ${rel(f.to)}`)
+}
+if (registryChanged) {
+  writeFileSync(registryPath, registryContent)
+  console.log('  生成  miniprogram/shell/registry.ts')
 }
 for (const o of orphans) {
   // 双保险：删除是不可逆的，宁可漏删也不能误删
@@ -159,4 +270,6 @@ for (const o of orphans) {
   console.log(`  删除  ${o}`)
 }
 
-console.log(`[sync] 完成：${files.length} 个文件，${changed.length} 个有变化，${orphans.length} 个多余已删除`)
+console.log(
+  `[sync] 完成：${files.length} 个文件，${changed.length} 个有变化，${orphans.length} 个多余已删除，注册表${registryChanged ? '已重新生成' : '无变化'}`,
+)
