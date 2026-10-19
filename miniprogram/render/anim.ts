@@ -19,9 +19,7 @@ const marks = new Map<string, { sig: string; at: number }>()
 let lastActive = 0
 
 export function now(): number {
-  // 小程序没有 performance 对象，用 Date.now() 顶上。
-  // 两者都是单调递增的毫秒数，插值与差值计算不受影响。
-  return Date.now()
+  return typeof performance !== 'undefined' ? performance.now() : 0
 }
 
 /** 让 key 对应的值平滑过渡到 target，返回当前插值 */
