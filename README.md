@@ -58,6 +58,16 @@ src/
       ├─ rules.ts        # 纯逻辑规则（禁止 import DOM、禁止 Math.random）
       ├─ index.ts        # 渲染 + 输入映射，导出 GameModule
       └─ rules.test.ts   # Vitest 测试
+
+scripts/
+└─ sync-miniprogram.mjs  # 同步脚本：把 src/ 的共享层逐字节复制到 miniprogram/（--check 只校验）
+
+miniprogram/            # 微信小程序版（试点：壳层 + 4 款游戏），详见下方小节
+├─ core/ render/        #   ← 共享层，由同步脚本生成，勿手改
+├─ games/               #   ← 同上，只含 miniprogram/ported-games.json 里列出的游戏
+├─ shell/ pages/        #   ← 小程序专属：DOM → WXML、Pointer Events → bindtouch*、存储 → wx.*
+├─ ported-games.json    #   已移植游戏清单
+└─ tests/               #   小程序壳层冒烟测试（不进小程序包）
 ```
 
 ---
@@ -381,6 +391,18 @@ mult >  0  →  +bet×mult
 - **44 款全进主包也放得下**：按本仓库实测的 37.7% 压缩比估算，44 款 + 壳层约 **449 KB**，远低于 2 MB 上限，**不需要分包**。分包是首屏启动速度问题，与代码怎么放无关。
 - **验证状态**：类型检查、25 例壳层冒烟测试均通过（与网页版那份同时绿才算没退步），但**尚未在真机 / 模拟器上跑过**——微信开发者工具的 CLI 需要先在「设置 → 安全设置」里手动开启服务端口，这一步必须手动完成，因此预览环节尚未执行。
 
+### 移植一款新游戏到小程序
+
+```bash
+# 1. 在 src/games/<id>/ 写好 4 个文件（与网页版同一套代码）
+# 2. 把 id 加进 miniprogram/ported-games.json
+# 3. 在 miniprogram/shell/registry.ts 注册它（静态 import 清单）
+npm run sync:mini     # 逐字节复制共享层到 miniprogram/
+npm test              # 漂移检查会验：清单↔注册表一致、共享层零差异、无孤儿、import 可解析、无浏览器 API
+```
+
+`npm test` 里有一条**漂移检查**（`src/miniprogram-sync.test.ts`）在盯着共享层：改了 `src/` 却忘了同步到 `miniprogram/`，它会直接变红——这类漂移本来是**不产生任何报错**的，两边测试各自都绿，只有真机上才会显形。详见 `DECISIONS.md` 4.34。
+
 开发与验证：
 
 ```bash
@@ -413,7 +435,7 @@ npx vitest run miniprogram/tests                 # 小程序壳层 20 例
 
 **验收现状**：
 
-- `npm test` → **49 个测试文件 / 1816 个用例全绿**（44 份游戏单测 1572 + 全站冒烟 136 + 金币单测 26 + 金币集成 57 + 小程序壳层冒烟 25）
+- `npm test` → **50 个测试文件 / 1824 个用例全绿**（44 份游戏单测 1572 + 全站冒烟 136 + 金币单测 26 + 金币集成 57 + 小程序壳层冒烟 25 + 共享层漂移检查 8）
 - `npx tsc --noEmit` → **零错误**
 - `npm run build` → 成功；**站点壳主块 24.5 KB gzip**（50.90 kB raw，上限 50 KB；44 份玩法介绍文案进了首屏包，涨了 6.4 KB），游戏块按需加载约 4~6 KB gzip
 - `rules.ts` 全局无 `Math.random` / `Date` / `performance`（仅注释中出现说明性文字）；5 款新游戏的 `rules.ts` 只 import `core/` 下的模块
@@ -426,6 +448,7 @@ npx vitest run miniprogram/tests                 # 小程序壳层 20 例
 - 顺带修掉 `evaluate()` 里方向反了的一项：它给「犬阵越靠右」加分，而猎犬恰恰要向右推进，等于叫搜索器别前进。改记「兔子往左的空出口」（`DECISIONS.md` 4.29）
 - **随机迷宫（`maze`）**：每关现生成一张完美迷宫，递归回溯 DFS 保证全图连通、无环、任意两点恰好一条路，48 条用例把生成树性质逐条穷举钉死（`DECISIONS.md` 4.31）
 - **微信小程序试点（`miniprogram/`）**：`npx tsc --noEmit -p miniprogram/tsconfig.json` → 零错误；`npx vitest run miniprogram/tests` → 25 例全绿（覆盖注册表、缩放坐标反算、四款游戏跑通、结算链路、音效降级、`performance` 垫片的单调性）；`npx vitest run` 两套壳层测试同时绿。`npm run build` 产物与上轮持平（50.90 kB raw / 24.46 kB gzip），小程序不影响网页版
+- **共享层漂移检查（`src/miniprogram-sync.test.ts`）**：8 例，验共享层逐字节相同、无孤儿文件、移植清单与注册表一致、相对 import 可解析、游戏逻辑无浏览器 API。`npm run sync:mini` 复制，`npm run check:mini` 校验
 - **小程序版暂不单独开仓库**：共享层 140 KB 零差异，目录隔离已经拿到代码隔离的绝大部分收益；剩下的发布节奏差异用按路径触发的 CI 就能解决，不必用仓库边界。分析见 `DECISIONS.md` 4.33
 
 **交互链路的验证状态（务必按这一类读，别当成「都点过了」）**：

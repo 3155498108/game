@@ -8,7 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sync:mini": "node scripts/sync-miniprogram.mjs",
+    "check:mini": "node scripts/sync-miniprogram.mjs --check"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
