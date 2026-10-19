@@ -1,81 +1,42 @@
-/** 存档：localStorage → wx.storage。逻辑与网页版一致，只换后端 */
-import type { Outcome } from '../core/types'
-
 /**
- * 小程序没有 `localStorage`，存储 API 是 `wx.getStorageSync` / `wx.setStorageSync`。
+ * `wx.*StorageSync` 后端适配器。
  *
- * 这里刻意**继续存 JSON 字符串**而不是直接存对象：小程序其实支持直接存对象，
- * 但网页版的 `readJSON` 是按「字符串 + JSON.parse + 损坏回落」写的。
+ * **逻辑在 `core/storage.ts`**，网页版与小程序版逐字节共享；
+ * 这里只负责两件事：把微信存储接上去、把墙上时钟接上去。
+ *
+ * 刻意**继续存 JSON 字符串**而不是直接存对象：小程序其实支持直接存对象，
+ * 但 `core/storage.ts` 的 `readJSON` 是按「字符串 + JSON.parse + 损坏回落」写的。
  * 保持同一套读写形态，两边的容错行为（解析失败回落默认值）才一致，
  * 存档被外部改坏时也不会因为两端处理方式不同而表现不同。
  */
-function rawGet(key: string): string {
-  try {
-    const v = wx.getStorageSync(key)
-    return typeof v === 'string' ? v : ''
-  } catch {
-    return ''
-  }
+import type { Outcome } from '../core/types'
+import { setStorageBackend, submitBest as coreSubmitBest } from '../core/storage'
+
+export { readJSON, writeJSON, bestKey, readBest, formatBest } from '../core/storage'
+export type { BestRecord } from '../core/storage'
+
+/**
+ * 把 wx 存储接上去。
+ *
+ * 单独抽成函数是为了**能重装**：`setStorageBackend` 会清空 `core/storage` 的内存兜底，
+ * 「后端换了 = 换了一套存储」。测试因此可以在每条用例前重装一次后端，
+ * 上一条用例写进去的值就不会漏到下一条。
+ */
+export function installWxBackend(): void {
+  setStorageBackend({
+    get: (k) => {
+      const v = wx.getStorageSync(k)
+      return typeof v === 'string' ? v : ''
+    },
+    set: (k, v) => {
+      wx.setStorageSync(k, v)
+    },
+  })
 }
 
-function rawSet(key: string, value: string): void {
-  try {
-    wx.setStorageSync(key, value)
-  } catch {
-    /* 配额满 / 存储不可用：静默忽略，游戏本身不依赖存档 */
-  }
-}
+installWxBackend()
 
-export function readJSON<T>(key: string, fallback: T): T {
-  const raw = rawGet(key)
-  if (raw === '') return fallback
-  try {
-    const v = JSON.parse(raw) as unknown
-    return (v ?? fallback) as T
-  } catch {
-    return fallback
-  }
-}
-
-export function writeJSON(key: string, value: unknown): void {
-  try {
-    rawSet(key, JSON.stringify(value))
-  } catch {
-    /* 忽略 */
-  }
-}
-
-export interface BestRecord {
-  score: number
-  unit: string
-  better: 'higher' | 'lower'
-  at: number
-}
-
-export const bestKey = (gameId: string): string => `gs:${gameId}:best`
-
-export function readBest(gameId: string): BestRecord | null {
-  const v = readJSON<unknown>(bestKey(gameId), null)
-  if (!v || typeof v !== 'object') return null
-  const r = v as Partial<BestRecord>
-  if (typeof r.score !== 'number' || !Number.isFinite(r.score)) return null
-  return {
-    score: r.score,
-    unit: typeof r.unit === 'string' ? r.unit : '',
-    better: r.better === 'lower' ? 'lower' : 'higher',
-    at: typeof r.at === 'number' ? r.at : 0,
-  }
-}
-
-/** 若刷新纪录返回 true */
+/** 纪录时间戳由壳层给：core/ 不读墙上时钟 */
 export function submitBest(gameId: string, o: Outcome): boolean {
-  const prev = readBest(gameId)
-  const better = !prev || (o.better === 'higher' ? o.score > prev.score : o.score < prev.score)
-  if (better) writeJSON(bestKey(gameId), { score: o.score, unit: o.unit, better: o.better, at: Date.now() })
-  return better
-}
-
-export function formatBest(b: BestRecord | null): string {
-  if (!b) return '暂无纪录'
-  return `最佳 ${b.score}${b.unit}`
+  return coreSubmitBest(gameId, o, Date.now())
 }

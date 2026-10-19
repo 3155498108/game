@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { Control, GameMeta, GameModule, PointerInput } from '../../src/core/types'
 import { Runtime, type CanvasNode } from '../shell/runtime'
 import { GAMES, findMeta, loadGame } from '../shell/registry'
-import { readBest } from '../shell/storage'
+import { readBest, installWxBackend } from '../shell/storage'
 import { readWallet } from '../shell/coins'
 
 /** 网页版的游戏清单：唯一真相源，用来断言小程序覆盖了全部游戏 */
@@ -185,6 +185,11 @@ function spyInput(mod: unknown, seen: PointerInput[]): GameModule<unknown, unkno
 
 beforeEach(() => {
   store.clear()
+  // **必须重装后端**：`core/storage.ts` 有一层内存兜底（隐私模式/配额满时兜底），
+  // `setStorageBackend` 会把它一起清空——「后端换了 = 换了一套存储」。
+  // 只清 wx 存储而不重装后端的话，内存里还留着上一条用例的旧值，
+  // 读回来的是陈的（持久层说没有、内存说有，内存赢了）。
+  installWxBackend()
   vibrateCount = 0
   setWindowSize(390, 844)
 })
@@ -520,6 +525,13 @@ describe('结算链路', () => {
     const best = readBest('fake')
     expect(best).not.toBeNull()
     expect(best!.score).toBe(42)
+    // 直接看 wx 存储里有没有那条纪录：只看 `readBest` 是不够的——
+    // `core/storage.ts` 有内存兜底，读到值只说明「某处有值」，
+    // 说不定只在内存里，真机重启就没了。必须证明它落到了持久层。
+    expect(store.get('gs:fake:best')).toBeTruthy()
+    expect(JSON.parse(store.get('gs:fake:best') as string).score).toBe(42)
+    // 钱包同理：它也得真的落到 wx 存储，而不是只躺在内存兜底里
+    expect(JSON.parse(store.get('gs:wallet') as string).balance).toBe(1010)
     expect(h.data.wallet).toBe('1,010')
     expect(h.data.delta).toBe('+10')
     expect(h.data.deltaClass).toBe('up')

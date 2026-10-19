@@ -37,23 +37,18 @@ const manifestRaw = import.meta.glob('/miniprogram/ported-games.json', { query: 
 const registryRaw = import.meta.glob('/miniprogram/shell/registry.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
 
 /**
- * 共享层**允许**依赖的壳层模块（路径相对 miniprogram/ 根）。
+ * 共享层**不得**依赖站点壳。
  *
- * 目前只有一处越层：`games/mahjong-match/index.ts` 要把「每关最少步数 / 最快用时」
- * 存到本地，于是 import 了 `shell/storage`。
+ * 曾经有一处越层：`games/mahjong-match/index.ts` 为了存「每关最少步数 / 最快用时」
+ * 而 import 了 `shell/storage`。那不是 bug——小程序侧也有同名同 API 的文件，
+ * `tsc` 也会对着它做类型检查——但它是**共享层与壳之间的一条暗债**：
+ * 共享层本该与站点壳无关，壳一改，游戏就跟着改。
  *
- * 这是网页版留下来的**分层欠账**（共享层本该与站点壳无关），
- * 但它不是「碰巧能跑」——小程序侧也有一个同名同 API 的 `shell/storage.ts`，
- * 而 `tsc` 会对着它做类型检查，所以 API 一改就立刻编译失败。
- *
- * 把它写进白名单，是把「碰巧」变成「有契约」：
- * 以后共享层再越层依赖别的东西，测试会直接变红，
- * 而这一处会有人知道它是**已登记的债**，不是意外。
- *
- * 正解是把存储搬进 `core/` 并注入后端（那样连这一处也能消掉），
- * 但那要动网页版壳层的 runtime / home / play，风险大于收益，留待以后。
+ * 现在还清了：存档逻辑搬进 `core/storage.ts`（两端逐字节共享），
+ * 壳层只剩一个后端适配器。所以这条检查从「白名单」升级成「**禁止**」——
+ * 不是「少一条越层是允许的」，而是「一条都不许有」。
  */
-const SHELL_DEPS = new Set(['shell/storage.ts'])
+const SHELL_PREFIXES = ['/miniprogram/shell/', '/miniprogram/pages/']
 
 /** 平台专属、刻意不与网页版同步的文件 */
 const HAND_WRITTEN = new Set(['/miniprogram/render/audio.ts'])
@@ -161,23 +156,28 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
           bad.push(`${key} 里的 import '${spec}' 解析不到`)
           continue
         }
-        // 越层检查：共享层只能依赖共享层，或者白名单里登记过的壳层模块
-        const inShared =
-          resolved.startsWith('/miniprogram/core/') ||
-          resolved.startsWith('/miniprogram/render/') ||
-          resolved.startsWith('/miniprogram/games/')
-        if (!inShared && !SHELL_DEPS.has(resolved.replace('/miniprogram/', ''))) {
-          bad.push(`${key} 越层依赖了 ${resolved}（不在 SHELL_DEPS 白名单里）`)
+        // 越层检查：共享层只能依赖共享层，不许碰站点壳
+        if (SHELL_PREFIXES.some((p) => resolved.startsWith(p))) {
+          bad.push(`${key} 越层依赖了 ${resolved}：共享层不许依赖站点壳`)
         }
       }
     }
     expect(bad).toEqual([])
   })
 
-  it('白名单里的壳层模块，小程序侧必须真的存在', () => {
-    for (const dep of SHELL_DEPS) {
-      expect(ALL[`/miniprogram/${dep}`], `小程序侧缺少 ${dep}`).toBeTruthy()
+  it('共享层里没有任何文件 import 站点壳', () => {
+    // 上面那条按「解析到的路径」判；这条按「源码里写了什么」判。
+    // 两条独立实现，坏掉一条另一条还能兜住。
+    //
+    // `shell` 与 `pages` 都要扫：站点壳有两处，
+    // 只认其中一个就等于给另一半留了个后门。
+    const bad: string[] = []
+    for (const key of expectedShared()) {
+      for (const m of ALL[key].matchAll(/from '(\.\.[^']*(?:shell|pages)[^']*)'/g)) {
+        bad.push(`${key} import 了 ${m[1]}`)
+      }
     }
+    expect(bad).toEqual([])
   })
 
   it('游戏逻辑里没有浏览器专属 API', () => {

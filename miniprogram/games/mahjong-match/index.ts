@@ -16,7 +16,7 @@ import { COLORS, background, ease, fillRoundRect, shadowText, text, topBar, with
 import { keepAlive, now, progressSince, pulse } from '../../render/anim'
 import type { Point, Rect } from '../../core/geom'
 import { clamp, inRect } from '../../core/geom'
-import { bestKey, readJSON, writeJSON } from '../../shell/storage'
+import { bestKey, readJSON, writeJSON } from '../../core/storage'
 import meta from './meta'
 import {
   GONE,

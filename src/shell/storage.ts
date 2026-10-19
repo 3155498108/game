@@ -1,77 +1,32 @@
-/** localStorage 安全封装：隐私模式 / 配额满 / JSON 损坏 均兜底，不让游戏崩溃 */
+/**
+ * localStorage 后端适配器。
+ *
+ * **逻辑在 `core/storage.ts`**，网页版与小程序版逐字节共享；
+ * 这里只负责两件事：把 `localStorage` 接上去、把墙上时钟接上去。
+ */
 import type { Outcome } from '../core/types'
+import { setStorageBackend, submitBest as coreSubmitBest } from '../core/storage'
 
-const mem = new Map<string, string>()
+export { readJSON, writeJSON, bestKey, readBest, formatBest } from '../core/storage'
+export type { BestRecord } from '../core/storage'
 
-function rawGet(key: string): string | null {
-  try {
-    const v = window.localStorage.getItem(key)
-    if (v !== null) return v
-  } catch {
-    /* 隐私模式等：回落到内存 */
-  }
-  return mem.has(key) ? (mem.get(key) as string) : null
+/**
+ * 把 localStorage 接上去。
+ *
+ * 单独抽成函数是为了**能重装**：`setStorageBackend` 会清空 `core/storage` 的内存兜底，
+ * 「后端换了 = 换了一套存储」。测试因此可以在每条用例前重装一次后端，
+ * 上一条用例写进去的值就不会漏到下一条。
+ */
+export function installLocalBackend(): void {
+  setStorageBackend({
+    get: (k) => window.localStorage.getItem(k) ?? '',
+    set: (k, v) => window.localStorage.setItem(k, v),
+  })
 }
 
-function rawSet(key: string, value: string): void {
-  mem.set(key, value)
-  try {
-    window.localStorage.setItem(key, value)
-  } catch {
-    /* 忽略 */
-  }
-}
+installLocalBackend()
 
-export function readJSON<T>(key: string, fallback: T): T {
-  const raw = rawGet(key)
-  if (raw === null) return fallback
-  try {
-    const v = JSON.parse(raw) as unknown
-    return (v ?? fallback) as T
-  } catch {
-    return fallback
-  }
-}
-
-export function writeJSON(key: string, value: unknown): void {
-  try {
-    rawSet(key, JSON.stringify(value))
-  } catch {
-    /* 忽略 */
-  }
-}
-
-export interface BestRecord {
-  score: number
-  unit: string
-  better: 'higher' | 'lower'
-  at: number
-}
-
-export const bestKey = (gameId: string): string => `gs:${gameId}:best`
-
-export function readBest(gameId: string): BestRecord | null {
-  const v = readJSON<unknown>(bestKey(gameId), null)
-  if (!v || typeof v !== 'object') return null
-  const r = v as Partial<BestRecord>
-  if (typeof r.score !== 'number' || !Number.isFinite(r.score)) return null
-  return {
-    score: r.score,
-    unit: typeof r.unit === 'string' ? r.unit : '',
-    better: r.better === 'lower' ? 'lower' : 'higher',
-    at: typeof r.at === 'number' ? r.at : 0,
-  }
-}
-
-/** 若刷新纪录返回 true */
+/** 纪录时间戳由壳层给：core/ 不读墙上时钟 */
 export function submitBest(gameId: string, o: Outcome): boolean {
-  const prev = readBest(gameId)
-  const better = !prev || (o.better === 'higher' ? o.score > prev.score : o.score < prev.score)
-  if (better) writeJSON(bestKey(gameId), { score: o.score, unit: o.unit, better: o.better, at: Date.now() })
-  return better
-}
-
-export function formatBest(b: BestRecord | null): string {
-  if (!b) return '暂无纪录'
-  return `最佳 ${b.score}${b.unit}`
+  return coreSubmitBest(gameId, o, Date.now())
 }

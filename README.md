@@ -37,6 +37,7 @@ src/
 │  ├─ types.ts    #   统一游戏接口 GameModule / GameMeta / Action 等
 │  ├─ rng.ts      #   可播种随机 mulberry32（Rng 类）
 │  ├─ cards.ts    #   扑克牌数据结构
+│  ├─ storage.ts  #   存档逻辑（JSON 读写 / 最佳纪录 / 内存兜底），后端由壳层注入
 │  └─ geom.ts     #   几何工具（命中判定）
 ├─ render/        # 共用渲染层：Canvas 2D
 │  ├─ draw.ts     #   颜色常量、圆角矩形、阴影文本、缓动函数、按钮
@@ -50,7 +51,7 @@ src/
 │  ├─ runtime.ts  #   游戏运行时：缩放适配、指针输入、rAF 循环、结算金币
 │  ├─ registry.ts #   游戏注册表（自动发现 games/*/）
 │  ├─ coins.ts    #   钱包：余额 / 注额 / 下注 / 结算 / 每日签到（纯本地虚拟积分）
-│  ├─ storage.ts  #   localStorage 安全封装
+│  ├─ storage.ts  #   localStorage 后端适配器（逻辑在 core/storage.ts）
 │  └─ daily.ts    #   每日挑战种子
 └─ games/
    └─ <game-id>/  # 每个游戏一个目录，互不依赖
@@ -380,16 +381,17 @@ mult >  0  →  +bet×mult
 | `render/audio.ts` | 保留原接口，实现降级为震动（见下） |
 | `shell/` | 全部重写：DOM → WXML、Pointer Events → `bindtouch*`、`localStorage` → `wx.*StorageSync`、`import.meta.glob` → **生成注册表** |
 
-共享层（`core/` + `render/{draw,anim,fx}` + `games/`，共 140 个文件）与网页版**逐字节相同**——唯一例外 `render/audio.ts` 只被壳层引用，任何游戏都不 import 它。
+共享层（`core/` + `render/{draw,anim,fx}` + `games/`，共 141 个文件）与网页版**逐字节相同**——唯一例外 `render/audio.ts` 只被壳层引用，任何游戏都不 import 它。
 
-几处值得先知道的取舍（完整论证见 `DECISIONS.md` 4.32、4.33、4.35、4.36）：
+几处值得先知道的取舍（完整论证见 `DECISIONS.md` 4.32、4.33、4.35、4.36、4.37）：
 
 - **音效降级为震动**：小程序的 `WebAudioContext` 只能播文件、不能像振荡器那样现场造波形，还原音色需要塞 9 个音频文件进 2MB 主包。所以 `play()` / `setMuted()` 等签名一字不改，实现换成 `wx.vibrateShort` / `wx.vibrateLong`——`runtime.ts` 一行都不用改，反馈通道从耳朵换到了手。
 - **`performance` 靠垫片而不是改源码**：共享代码 `render/anim.ts` 读全局 `performance.now()`，小程序默认没有这个对象。那个 `0` 兜底在小程序里是**坏的**（所有动画卡在 0 时刻）。改 `anim.ts` 会让共享层出现「手改副本」，所以改为在 `shell/perf.ts` 装一个单调时钟垫片——顺带修掉 `Date.now()` 是墙钟、回拨会算出负数时长的问题。
 - **横竖屏策略照规格第 5 条实现**：「视口方向与游戏要求不符就显示旋转提示层，**不要硬转 canvas**」。`app.json` 的 `pageOrientation` 用 `auto`（否则横屏游戏永远满足不了要求），方向不符时弹提示 + 停帧 + 拦输入，转屏后重新量画布再重算缩放。44 款里有 10 款是横屏——第一版试点漏了这条，玩具网球在真机上是坏的，见 `DECISIONS.md` 4.35。
 - **注册表由清单生成**：小程序打包器要求依赖静态可分析，没有 `import.meta.glob` 这样的自动发现机制。于是 `miniprogram/ported-games.json` 是唯一真相源，`npm run sync:mini` 据此复制代码**并生成** `miniprogram/shell/registry.ts`。这与网页版的 `import.meta.glob` 目的相同——**「加一款游戏不需要改站点壳」**。
 - **44 款全进主包也放得下**：源码 1.19 MB，按实测的 37.7% minify 压缩比约 **449 KB**，占 2 MB 上限的 22%，**不需要分包**。代价是 44 款游戏的模块会在启动时全部求值（网页版是动态 `import()` 按需加载）——这是两端明确不同的一点。
-- **三道「以前靠运气」的护栏**（`DECISIONS.md` 4.36）：Canvas API 白名单（小程序上下文不是浏览器实现，类型检查抓不到）、越层依赖白名单（共享层只允许依赖白名单里登记过的壳层模块）、清单↔注册表一致性。
+- **存档逻辑在 `core/`，壳层只留后端适配器**：网页版与小程序版原本各有一份手写的 `shell/storage.ts`，靠人工保持 API 一致。现在逻辑搬进 `core/storage.ts`（两端逐字节相同），平台差异只剩两处——**存储后端**（`localStorage` ↔ `wx.*StorageSync`）与**墙上时钟**（`core/` 不碰 `Date`，时间戳由壳层传进来）。附带好处：内存兜底（隐私模式 / 配额满时不让存档整个丢掉）以前只有网页版有，**现在两端都有**。见 `DECISIONS.md` 4.37。
+- **三道「以前靠运气」的护栏**（`DECISIONS.md` 4.36、4.37）：Canvas API 白名单（小程序上下文不是浏览器实现，类型检查抓不到）、**越层依赖禁止**（共享层一条都不许 import 站点壳，白名单已随欠账还清而拆除）、清单↔注册表一致性。
 - **验证状态**：类型检查、85 例小程序相关测试均通过（与网页版那份同时绿才算没退步），但**尚未在真机 / 模拟器上跑过**——微信开发者工具的 CLI 需要先在「设置 → 安全设置」里手动开启服务端口，这一步必须手动完成，因此预览环节尚未执行。
 
 ### 移植一款新游戏到小程序
@@ -409,7 +411,7 @@ npm test              # 漂移检查会验：清单↔注册表一致、共享�
 
 ```bash
 npx tsc --noEmit -p miniprogram/tsconfig.json   # 小程序单独类型检查
-npx vitest run miniprogram/tests                 # 小程序壳层 20 例
+npx vitest run miniprogram/tests                 # 小程序壳层 76 例
 ```
 
 ---
@@ -437,9 +439,9 @@ npx vitest run miniprogram/tests                 # 小程序壳层 20 例
 
 **验收现状**：
 
-- `npm test` → **51 个测试文件 / 1876 个用例全绿**（44 份游戏单测 1572 + 全站冒烟 136 + 金币单测 26 + 金币集成 57 + 小程序 85）
+- `npm test` → **53 个测试文件 / 1898 个用例全绿**（44 份游戏单测 1572 + 全站冒烟 136 + 金币单测 26 + 金币集成 57 + 小程序 85 + 共享层存档 17 + 存储适配器 5）
 - `npx tsc --noEmit` → **零错误**
-- `npm run build` → 成功；**站点壳主块 24.5 KB gzip**（50.90 kB raw，上限 50 KB；44 份玩法介绍文案进了首屏包，涨了 6.4 KB），游戏块按需加载约 4~6 KB gzip
+- `npm run build` → 成功；**站点壳主块 24.53 KB gzip**（51.03 kB raw；44 份玩法介绍文案进了首屏包，涨了 6.4 KB），游戏块按需加载约 4~6 KB gzip
 - `rules.ts` 全局无 `Math.random` / `Date` / `performance`（仅注释中出现说明性文字）；5 款新游戏的 `rules.ts` 只 import `core/` 下的模块
 - 全站冒烟（`src/smoke.test.ts`）：44 款的 `render` / `effects` / `controls` 接线在整局每一步都不抛错，通用驱动能推完 **29/44** 款；**另有跨游戏契约测试：回合制游戏的 `aiAction` 不得连走两步**（见 `DECISIONS.md` 4.22）
 - 玩法介绍（`howto`）：44 款全部写了 3~6 条，条数、长度、句号结尾、不含实现细节、不与 `summary` 重抄，由冒烟测试当契约盯着
@@ -449,8 +451,10 @@ npx vitest run miniprogram/tests                 # 小程序壳层 20 例
 - 上一版 README 里那句「自对弈里深度 6 的猎犬 4/4 局不输」**已更正**：那 4 局全是 120 手平局，`winner !== 'hare'` 在「双方都没赢」时也会通过。真正的问题是 `sideStreak` 被兔子每一步清零，**猎犬连续横移十次判负这条分支从来没被执行过**（150 局 0 胜）；修好后同条件 10/16 胜。见 `DECISIONS.md` 4.27
 - 顺带修掉 `evaluate()` 里方向反了的一项：它给「犬阵越靠右」加分，而猎犬恰恰要向右推进，等于叫搜索器别前进。改记「兔子往左的空出口」（`DECISIONS.md` 4.29）
 - **随机迷宫（`maze`）**：每关现生成一张完美迷宫，递归回溯 DFS 保证全图连通、无环、任意两点恰好一条路，48 条用例把生成树性质逐条穷举钉死（`DECISIONS.md` 4.31）
-- **微信小程序版（`miniprogram/`）**：`npx tsc --noEmit -p miniprogram/tsconfig.json` → 零错误；小程序相关测试 **85 例全绿**（覆盖注册表、缩放坐标反算、**44 款游戏全部跑通**、结算链路、音效降级、`performance` 垫片的单调性、横竖屏策略 8 例、Canvas API 守卫、共享层漂移检查 9 例）；`npx vitest run` 两套壳层测试同时绿。`npm run build` 产物与上轮持平（50.90 kB raw / 24.46 kB gzip），小程序不影响网页版
+- **微信小程序版（`miniprogram/`）**：`npx tsc --noEmit -p miniprogram/tsconfig.json` → 零错误；小程序相关测试 **85 例全绿**（覆盖注册表、缩放坐标反算、**44 款游戏全部跑通**、结算链路、音效降级、`performance` 垫片的单调性、横竖屏策略 8 例、Canvas API 守卫、共享层漂移检查 9 例）；`npx vitest run` 两套壳层测试同时绿。`npm run build` 产物 51.03 kB raw / 24.53 kB gzip（较上轮 +0.03 kB，来自新增的 `core/storage.ts`），小程序不影响网页版
 - **共享层漂移检查（`src/miniprogram-sync.test.ts`）**：9 例，验共享层逐字节相同、无孤儿文件、移植清单与注册表一致、相对 import 可解析**且不越层**、游戏逻辑与渲染层无浏览器 API。`npm run sync:mini` 复制并生成注册表，`npm run check:mini` 校验
+- **越层依赖已清零**：44 款里唯一一处越层（`mahjong-match` → `shell/storage`）已还清——存档逻辑搬进 `core/storage.ts`，壳层只剩后端适配器。越层检查因此从「白名单（允许 1 条）」升级成「**禁止（一条都不许有）**」，并用两条独立实现（按解析路径 / 按源码字样）互为兜底。见 `DECISIONS.md` 4.37
+- **存档分层（`src/core/storage.ts`）**：网页版与小程序版原先各有一份手写 `shell/storage.ts`，靠人工保持 API 一致；现在逻辑共享、后端由壳层注入。附带把「隐私模式 / 配额满时不让存档整个丢掉」的内存兜底从**只有网页版有**变成**两端都有**。`core/` 不碰 `Date`（时间戳由壳层传进来），有一条用例直接扫源码盯着这条纪律
 - **小程序版补上了规格第 5 条「横竖屏策略」**：44 款里 10 款是横屏，第一版试点把 `pageOrientation` 写死 portrait，玩具网球在真机上是坏的；现已按规格补上提示层（不硬转 canvas）、转屏重测量与 8 例朝向测试（`DECISIONS.md` 4.35）
 - **小程序版暂不单独开仓库**：共享层零差异，目录隔离已经拿到代码隔离的绝大部分收益；剩下的发布节奏差异用按路径触发的 CI 就能解决，不必用仓库边界。分析见 `DECISIONS.md` 4.33
 
