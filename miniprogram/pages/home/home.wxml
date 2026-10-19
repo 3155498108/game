@@ -1,0 +1,60 @@
+<view class="page home">
+  <view class="head">
+    <view class="head-l">
+      <text class="title">小游戏合集</text>
+      <text class="sub">{{games.length}} 款 · 试点版</text>
+    </view>
+    <view class="head-r">
+      <view class="wallet">🪙 {{wallet}}</view>
+      <view wx:if="{{canSignin}}" class="signin" bindtap="onSignin">签到 +{{signinAmount}}</view>
+      <view wx:else class="signin done">已签到</view>
+    </view>
+  </view>
+
+  <view class="daily" bindtap="onDaily">
+    <view class="daily-l">
+      <text class="daily-t">今日挑战</text>
+      <text class="daily-s">{{today}}</text>
+    </view>
+    <text class="daily-n">{{dailyName}} ›</text>
+  </view>
+
+  <input class="search" placeholder="搜索游戏名或玩法" value="{{q}}" bindinput="onSearch" confirm-type="search" />
+
+  <scroll-view class="chips" scroll-x enable-flex>
+    <view
+      wx:for="{{cats}}"
+      wx:key="key"
+      class="chip {{cat === item.key ? 'on' : ''}}"
+      data-k="{{item.key}}"
+      bindtap="onCat"
+    >{{item.label}}</view>
+  </scroll-view>
+
+  <scroll-view class="list" scroll-y>
+    <view wx:for="{{games}}" wx:key="id" class="card" data-id="{{item.id}}" bindtap="onPlay">
+      <view class="card-l">
+        <text class="card-t">{{item.name}}</text>
+        <text class="card-s">{{item.summary}}</text>
+        <view class="tags">
+          <text wx:for="{{item.tags}}" wx:for-item="t" wx:key="*this" class="tag">{{t}}</text>
+        </view>
+      </view>
+      <view class="card-r" data-id="{{item.id}}" catchtap="onHowto">玩法</view>
+    </view>
+    <view wx:if="{{games.length === 0}}" class="empty">没有匹配的游戏</view>
+    <view class="pad"></view>
+  </scroll-view>
+
+  <view wx:if="{{howtoOpen}}" class="mask" bindtap="onCloseHowto">
+    <view class="sheet" catchtap="onNoop">
+      <text class="sheet-t">{{howtoTitle}} · 玩法</text>
+      <scroll-view class="sheet-b" scroll-y>
+        <view wx:for="{{howto}}" wx:key="*this" class="sheet-i">{{index + 1}}. {{item}}</view>
+      </scroll-view>
+      <view class="btn primary sheet-x" bindtap="onCloseHowto">知道了</view>
+    </view>
+  </view>
+
+  <view wx:if="{{!toastHidden}}" class="toast" bindtap="onToastOk">{{toast}}</view>
+</view>

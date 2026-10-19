@@ -1,0 +1,241 @@
+.home {
+  padding: 0 24rpx;
+}
+
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 24rpx 4rpx 20rpx;
+}
+
+.head-l {
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  font-size: 44rpx;
+  font-weight: 700;
+}
+
+.sub {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #9fb3cf;
+}
+
+.head-r {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.wallet {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #ffcc33;
+}
+
+.signin {
+  margin-top: 10rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  background: #ffcc33;
+  color: #1b1b1f;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.signin.done {
+  background: #2b4468;
+  color: #9fb3cf;
+}
+
+.daily {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 24rpx;
+  border-radius: 20rpx;
+  background: linear-gradient(135deg, #1f3352, #2b4468);
+  border: 2rpx solid #3a5680;
+}
+
+.daily-l {
+  display: flex;
+  flex-direction: column;
+}
+
+.daily-t {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #4fd1c5;
+}
+
+.daily-s {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #9fb3cf;
+}
+
+.daily-n {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.search {
+  margin: 20rpx 0 14rpx;
+  padding: 0 24rpx;
+  height: 76rpx;
+  border-radius: 16rpx;
+  background: #16263d;
+  color: #f4f7fb;
+  font-size: 28rpx;
+}
+
+.chips {
+  white-space: nowrap;
+  margin-bottom: 16rpx;
+}
+
+.chip {
+  display: inline-block;
+  padding: 12rpx 26rpx;
+  margin-right: 14rpx;
+  border-radius: 999rpx;
+  background: #1f3352;
+  color: #9fb3cf;
+  font-size: 26rpx;
+}
+
+.chip.on {
+  background: #4fd1c5;
+  color: #0f1b2d;
+  font-weight: 700;
+}
+
+.list {
+  flex: 1;
+  height: 0;
+}
+
+.card {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: 16rpx;
+  border-radius: 20rpx;
+  background: #16263d;
+  border: 2rpx solid #22344f;
+  overflow: hidden;
+}
+
+.card-l {
+  flex: 1;
+  padding: 22rpx 24rpx;
+}
+
+.card-t {
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.card-s {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #9fb3cf;
+  line-height: 1.5;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 14rpx;
+}
+
+.tag {
+  margin: 0 10rpx 0 0;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  background: #1f3352;
+  color: #7f97b8;
+  font-size: 20rpx;
+}
+
+.card-r {
+  display: flex;
+  align-items: center;
+  padding: 0 22rpx;
+  border-left: 2rpx solid #22344f;
+  color: #4fd1c5;
+  font-size: 24rpx;
+}
+
+.empty {
+  padding: 80rpx 0;
+  text-align: center;
+  color: #9fb3cf;
+  font-size: 28rpx;
+}
+
+.pad {
+  height: 40rpx;
+}
+
+.mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(5, 10, 20, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sheet {
+  width: 620rpx;
+  max-height: 70vh;
+  padding: 32rpx;
+  border-radius: 24rpx;
+  background: #16263d;
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet-t {
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.sheet-b {
+  flex: 1;
+  height: 0;
+  margin: 20rpx 0 24rpx;
+}
+
+.sheet-i {
+  margin-bottom: 16rpx;
+  font-size: 26rpx;
+  color: #c9d8ec;
+  line-height: 1.6;
+}
+
+.sheet-x {
+  flex: none;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 120rpx;
+  margin-left: -240rpx;
+  width: 480rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 16rpx;
+  background: rgba(20, 32, 52, 0.95);
+  border: 2rpx solid #3a5680;
+  text-align: center;
+  font-size: 26rpx;
+}

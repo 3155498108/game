@@ -18,3 +18,6 @@ vp-one.html
 .DS_Store
 Thumbs.db
 *.log
+
+# 微信开发者工具的每人本地配置（登录信息、模拟器偏好），不进版本库
+miniprogram/project.private.config.json

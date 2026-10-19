@@ -1,0 +1,184 @@
+.play {
+  padding: 0 20rpx 16rpx;
+  box-sizing: border-box;
+}
+
+/* 舞台吃掉所有剩余高度：画布尺寸由 SelectorQuery 量出来再交给 runtime 去算缩放，
+   所以这里不需要（也不该）按逻辑分辨率反推像素——那是 runtime 的活 */
+.stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.cv {
+  width: 100%;
+  height: 100%;
+}
+
+.missing {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 45%;
+  text-align: center;
+  color: #9fb3cf;
+  font-size: 28rpx;
+}
+
+.hint {
+  padding: 14rpx 8rpx;
+  color: #c9d8ec;
+  font-size: 25rpx;
+  line-height: 1.5;
+  min-height: 68rpx;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 4rpx 14rpx;
+}
+
+.best {
+  font-size: 24rpx;
+  color: #9fb3cf;
+}
+
+.meta-r {
+  display: flex;
+  align-items: center;
+}
+
+.chip {
+  padding: 10rpx 20rpx;
+  margin-left: 14rpx;
+  border-radius: 999rpx;
+  background: #1f3352;
+  color: #c9d8ec;
+  font-size: 24rpx;
+}
+
+.chip.icon {
+  min-width: 68rpx;
+  text-align: center;
+}
+
+.wallet {
+  margin-left: 14rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #ffcc33;
+}
+
+.delta {
+  margin-left: 10rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.delta.up {
+  color: #66bb6a;
+}
+
+.delta.down {
+  color: #ef5350;
+}
+
+.ctrls {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.ctrl {
+  flex: 1;
+  min-width: 200rpx;
+  margin: 0 10rpx 10rpx 0;
+  min-height: 88rpx;
+  padding: 0 12rpx;
+  border-radius: 16rpx;
+  background: #2b4468;
+  color: #f4f7fb;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 88rpx;
+  text-align: center;
+}
+
+.ctrl::after {
+  border: none;
+}
+
+.ctrl.primary {
+  background: #ffcc33;
+  color: #1b1b1f;
+}
+
+.ctrl.ghost {
+  background: transparent;
+  border: 2rpx solid #3a5680;
+  color: #9fb3cf;
+}
+
+.ctrl[disabled] {
+  opacity: 0.4;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 200rpx;
+  margin-left: -240rpx;
+  width: 480rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 16rpx;
+  background: rgba(20, 32, 52, 0.95);
+  border: 2rpx solid #3a5680;
+  text-align: center;
+  font-size: 26rpx;
+}
+
+.mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(5, 10, 20, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sheet {
+  width: 620rpx;
+  max-height: 70vh;
+  padding: 32rpx;
+  border-radius: 24rpx;
+  background: #16263d;
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet-t {
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.sheet-b {
+  flex: 1;
+  height: 0;
+  margin: 20rpx 0 24rpx;
+}
+
+.sheet-i {
+  margin-bottom: 16rpx;
+  font-size: 26rpx;
+  color: #c9d8ec;
+  line-height: 1.6;
+}
+
+.sheet-x {
+  flex: none;
+}

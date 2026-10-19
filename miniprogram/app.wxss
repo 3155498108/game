@@ -1,0 +1,49 @@
+/* 全局样式：与网页版 COLORS 常量一一对应，避免两端配色漂移 */
+page {
+  background: #0f1b2d;
+  color: #f4f7fb;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+/* 圆形按钮与文字按钮的通用外观，对齐网页版 .btn 的三档 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 12px;
+  background: #2b4468;
+  color: #f4f7fb;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  border: none;
+}
+
+.btn::after {
+  border: none;
+}
+
+.btn.primary {
+  background: #ffcc33;
+  color: #1b1b1f;
+}
+
+.btn.ghost {
+  background: transparent;
+  border: 2rpx solid #3a5680;
+  color: #9fb3cf;
+}
+
+.btn[disabled] {
+  opacity: 0.4;
+}

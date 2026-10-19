@@ -1,0 +1,51 @@
+<view class="page play">
+  <view class="stage">
+    <canvas
+      type="2d"
+      id="cv"
+      class="cv"
+      disable-scroll
+      bindtouchstart="onTouchStart"
+      catchtouchmove="onTouchMove"
+      bindtouchend="onTouchEnd"
+      bindtouchcancel="onTouchCancel"
+    ></canvas>
+    <view wx:if="{{missing}}" class="missing">找不到这款游戏</view>
+  </view>
+
+  <view class="hint">{{hint}}</view>
+
+  <view class="meta">
+    <text class="best">{{best}}</text>
+    <view class="meta-r">
+      <view class="chip" bindtap="onBet">注 {{bet}}</view>
+      <text class="wallet">🪙 {{wallet}}</text>
+      <text wx:if="{{delta}}" class="delta {{deltaClass}}">{{delta}}</text>
+      <view class="chip icon" bindtap="onSound">{{muted ? '🔇' : '🔊'}}</view>
+      <view class="chip icon" bindtap="onHowto">玩法</view>
+    </view>
+  </view>
+
+  <view class="ctrls">
+    <button
+      wx:for="{{ctrls}}"
+      wx:key="label"
+      class="ctrl {{item.primary ? 'primary' : ''}} {{item.shell ? 'ghost' : ''}}"
+      data-i="{{index}}"
+      disabled="{{item.disabled}}"
+      bindtap="onCtrl"
+    >{{item.label}}</button>
+  </view>
+
+  <view wx:if="{{!toastHidden}}" class="toast" bindtap="onToastOk">{{toast}}</view>
+
+  <view wx:if="{{howtoOpen}}" class="mask" bindtap="onCloseHowto">
+    <view class="sheet" catchtap="onNoop">
+      <text class="sheet-t">{{title}} · 玩法</text>
+      <scroll-view class="sheet-b" scroll-y>
+        <view wx:for="{{howto}}" wx:key="*this" class="sheet-i">{{index + 1}}. {{item}}</view>
+      </scroll-view>
+      <view class="btn primary sheet-x" bindtap="onCloseHowto">知道了</view>
+    </view>
+  </view>
+</view>
