@@ -241,6 +241,24 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
     }
   })
 
+  it('移植清单覆盖 src/games 的全部游戏（小程序是网页版的完整镜像）', () => {
+    // 上面那条只查了「清单 ⊆ 源码」，**漏了反方向**：
+    // 在 src/games 下多出一款游戏而忘了加进清单，小程序就会静默地没有它——
+    // 没有任何报错，玩家在小程序里根本找不到这款游戏。
+    //
+    // 「把全部游戏整合到小程序」就是这条不变量：
+    // 两边的游戏集合必须**完全相等**，不多不少。
+    const srcIds = [
+      ...new Set(
+        Object.keys(srcGames)
+          .map((k) => /^\/src\/games\/([^/]+)\//.exec(k)?.[1] ?? '')
+          .filter(Boolean),
+      ),
+    ].sort()
+    expect(srcIds.length).toBeGreaterThan(0)
+    expect([...portedGames()].sort()).toEqual(srcIds)
+  })
+
   it('相对 import 在小程序侧都能解析到文件，且不越层', () => {
     const bad: string[] = []
     for (const key of expectedShared()) {
