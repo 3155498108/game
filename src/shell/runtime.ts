@@ -254,6 +254,14 @@ export class Runtime<S = unknown, A = unknown> {
 
   // ---------------- 输入 ----------------
   private onPointer(e: PointerEvent, kind: PointerInput['kind']): void {
+    // 旋转提示层挡着的时候不吃输入——提示层是全屏遮罩，
+    // 不拦住的话玩家隔着遮罩戳一下，游戏就收到了一次误触。
+    //
+    // 遮罩本身已经盖住了画布，正常情况下事件根本到不了这里；
+    // 但**指针捕获**（`setPointerCapture`）会让已经按下的那根手指的后续事件
+    // 继续发给画布——玩家转到一半时手指还按着，就会漏进来一次「抬起」。
+    // 小程序那边是显式挡的（`miniprogram/shell/runtime.ts`），这里也对齐。
+    if (this.rotateShown) return
     e.preventDefault()
     if (kind === 'down') {
       unlockAudio()
