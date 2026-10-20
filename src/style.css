@@ -719,6 +719,152 @@ body.playing {
   }
 }
 
+/* ---------------- 桌面端专属布局 ----------------
+   手机那套布局直接拉到宽屏上会很难看：**所有游戏的逻辑分辨率都是 720×1280**
+   （`orientation` 只决定手机上要不要弹「请转屏」，不改变画布比例），
+   所以在宽屏上画面一律按**高度**缩放成一条窄柱，左右空出一大片，
+   而控件还挤在画面底下那条窄带里。
+
+   桌面端另起一套：左边画面、右边控制台。两个好处：
+   1. 画面吃满整列高度（底栏挪走了），比原来大两成；
+   2. 控件竖着排，每个都是整宽大按钮，不再挤成一行折行。
+
+   画面宽度用运行时的 --game-w（画面实际渲染宽度）来定，
+   这样画布正好等于画面，黑边被挤成 0——不用改运行时的缩放算法。 */
+
+@media (min-width: 1100px) {
+  :root {
+    /* 右侧控制台宽度与画面的间距 */
+    --side-w: 320px;
+    --side-gap: 24px;
+  }
+
+  .play {
+    max-width: 1440px;
+
+    /* 初始值：运行时第一帧就会把它改写成画面实际宽度（px）。
+       这里必须给一个**确定的 px 值**——第一列靠它定宽，
+       给百分比会绕成「轨道宽度依赖轨道宽度」的死循环。 */
+    --game-w: 380px;
+
+    display: grid;
+    /* 第一列按画面实际宽度定，但允许被压扁——窗口不够宽时画面跟着缩，
+       不会把右侧控制台挤出可视区（minmax(0, …) 的下限 0 就是这个意思） */
+    grid-template-columns: minmax(0, max-content) var(--side-w);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "bar   bar"
+      "stage dock";
+    column-gap: var(--side-gap);
+    /* 整组（画面 + 控制台）居中，两侧留白对称 */
+    justify-content: center;
+  }
+
+  .play .bar {
+    grid-area: bar;
+    max-width: none;
+  }
+
+  .play .stage {
+    grid-area: stage;
+    width: var(--game-w);
+    max-width: 100%;
+    justify-self: center;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .play .dock {
+    grid-area: dock;
+    max-width: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 14px;
+    border-top: none;
+    border-left: 1px solid rgba(58, 86, 128, 0.35);
+    background: rgba(22, 38, 61, 0.55);
+    border-radius: 14px;
+    overflow-y: auto;
+  }
+
+  .play .coins {
+    margin-bottom: 0;
+  }
+
+  /* 控件竖着排：横排挤在 320px 宽里会折行，竖排每个都是整宽大按钮 */
+  .play .ctrls {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .play .ctrls .btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    justify-content: center;
+  }
+
+  /* ---------------- 首页：桌面端排版 ---------------- */
+
+  .home {
+    max-width: 1320px;
+    padding-top: calc(40px + var(--safe-t));
+  }
+
+  /* 标题与钱包同一行，搜索框另起一行占满 */
+  .home-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 20px;
+  }
+
+  .home-head h1 {
+    margin-bottom: 0;
+  }
+
+  .wallet-bar {
+    margin-top: 0;
+    justify-content: flex-end;
+  }
+
+  .search {
+    grid-column: 1 / -1;
+    margin-top: 14px;
+  }
+
+  /* 每日挑战改成横幅：窄条在宽屏上太不起眼 */
+  .daily {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 18px;
+    padding: 18px 22px;
+  }
+
+  .daily-k {
+    flex: 0 0 auto;
+  }
+
+  .daily-n {
+    font-size: 24px;
+  }
+
+  .daily-s {
+    flex: 1 1 auto;
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 12px;
+  }
+
+  .game-card {
+    padding: 12px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .phone {
     animation: none;
