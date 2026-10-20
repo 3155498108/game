@@ -24,6 +24,7 @@
 import { describe, expect, it } from 'vitest'
 import type { GameModule, Outcome } from './core/types'
 import { settle, START_COINS, MAX_PAYOUT, type Wallet } from './shell/coins'
+import { GAME_COUNT } from './game-count'
 
 /**
  * 全站全部游戏，含 index.ts（coins() 只挂在 GameModule 上，meta.ts 里没有）。
@@ -78,9 +79,9 @@ function expectSane(id: string, bet: number, outcome: Outcome, g: GameModule, st
   expect(poor.balance, `${label}：破产玩家也不能被扣成负数`).toBeGreaterThanOrEqual(0)
 }
 
-describe('金币结算集成：44 款真实游戏的 coins() 都要活着穿过 settle()', () => {
+describe(`金币结算集成：${GAME_COUNT} 款真实游戏的 coins() 都要活着穿过 settle()`, () => {
   it('注册表能收齐全部游戏，且其中有实现 coins() 的定制款', () => {
-    expect(ALL.length).toBe(44)
+    expect(ALL.length).toBe(GAME_COUNT)
     // 5 款门票制 + 5 款博彩
     expect(CUSTOM.length).toBeGreaterThanOrEqual(10)
   })

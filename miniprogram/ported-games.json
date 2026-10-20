@@ -23,6 +23,7 @@
     "maze",
     "memory",
     "memory-sequence",
+    "merge-2048",
     "mines",
     "pachinko",
     "pig-tail",
@@ -35,7 +36,11 @@
     "sevens",
     "sliding-puzzle",
     "slot-machine",
+    "snake",
+    "sokoban",
+    "solitaire",
     "stud-poker",
+    "sudoku",
     "takoyaki",
     "tank-duel",
     "target-shooting",
@@ -44,6 +49,7 @@
     "toy-curling",
     "toy-football",
     "toy-tennis",
+    "whack-a-mole",
     "yahtzee"
   ]
 }

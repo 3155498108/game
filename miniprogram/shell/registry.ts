@@ -62,6 +62,8 @@ import memoryMeta from '../games/memory/meta'
 import memoryGame from '../games/memory/index'
 import memorySequenceMeta from '../games/memory-sequence/meta'
 import memorySequenceGame from '../games/memory-sequence/index'
+import merge2048Meta from '../games/merge-2048/meta'
+import merge2048Game from '../games/merge-2048/index'
 import minesMeta from '../games/mines/meta'
 import minesGame from '../games/mines/index'
 import pachinkoMeta from '../games/pachinko/meta'
@@ -86,8 +88,16 @@ import slidingPuzzleMeta from '../games/sliding-puzzle/meta'
 import slidingPuzzleGame from '../games/sliding-puzzle/index'
 import slotMachineMeta from '../games/slot-machine/meta'
 import slotMachineGame from '../games/slot-machine/index'
+import snakeMeta from '../games/snake/meta'
+import snakeGame from '../games/snake/index'
+import sokobanMeta from '../games/sokoban/meta'
+import sokobanGame from '../games/sokoban/index'
+import solitaireMeta from '../games/solitaire/meta'
+import solitaireGame from '../games/solitaire/index'
 import studPokerMeta from '../games/stud-poker/meta'
 import studPokerGame from '../games/stud-poker/index'
+import sudokuMeta from '../games/sudoku/meta'
+import sudokuGame from '../games/sudoku/index'
 import takoyakiMeta from '../games/takoyaki/meta'
 import takoyakiGame from '../games/takoyaki/index'
 import tankDuelMeta from '../games/tank-duel/meta'
@@ -104,6 +114,8 @@ import toyFootballMeta from '../games/toy-football/meta'
 import toyFootballGame from '../games/toy-football/index'
 import toyTennisMeta from '../games/toy-tennis/meta'
 import toyTennisGame from '../games/toy-tennis/index'
+import whackAMoleMeta from '../games/whack-a-mole/meta'
+import whackAMoleGame from '../games/whack-a-mole/index'
 import yahtzeeMeta from '../games/yahtzee/meta'
 import yahtzeeGame from '../games/yahtzee/index'
 
@@ -132,6 +144,7 @@ const MODULES: Record<string, AnyModule> = {
   [mazeMeta.id]: mazeGame,
   [memoryMeta.id]: memoryGame,
   [memorySequenceMeta.id]: memorySequenceGame,
+  [merge2048Meta.id]: merge2048Game,
   [minesMeta.id]: minesGame,
   [pachinkoMeta.id]: pachinkoGame,
   [pigTailMeta.id]: pigTailGame,
@@ -144,7 +157,11 @@ const MODULES: Record<string, AnyModule> = {
   [sevensMeta.id]: sevensGame,
   [slidingPuzzleMeta.id]: slidingPuzzleGame,
   [slotMachineMeta.id]: slotMachineGame,
+  [snakeMeta.id]: snakeGame,
+  [sokobanMeta.id]: sokobanGame,
+  [solitaireMeta.id]: solitaireGame,
   [studPokerMeta.id]: studPokerGame,
+  [sudokuMeta.id]: sudokuGame,
   [takoyakiMeta.id]: takoyakiGame,
   [tankDuelMeta.id]: tankDuelGame,
   [targetShootingMeta.id]: targetShootingGame,
@@ -153,6 +170,7 @@ const MODULES: Record<string, AnyModule> = {
   [toyCurlingMeta.id]: toyCurlingGame,
   [toyFootballMeta.id]: toyFootballGame,
   [toyTennisMeta.id]: toyTennisGame,
+  [whackAMoleMeta.id]: whackAMoleGame,
   [yahtzeeMeta.id]: yahtzeeGame,
 }
 
