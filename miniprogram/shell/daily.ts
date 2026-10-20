@@ -1,4 +1,4 @@
-/** 每日挑战：当天日期作为 seed，生成固定对局（与网页版一致） */
+/** 每日挑战：当天日期作为 seed，生成固定对局 */
 import type { GameMeta } from '../core/types'
 import { hashSeed } from '../core/rng'
 

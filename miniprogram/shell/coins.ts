@@ -1,8 +1,13 @@
 /**
- * 金币系统（壳层专属）。逻辑与网页版**逐行一致**，只有 import 的 storage 换了实现。
+ * 金币系统（壳层专属）。
  *
- * 保留「和网页版完全相同」是有意的：钱包的每一条边界（不透支、封顶、
- * 存档被改坏要夹回合法区间）都是踩过坑定出来的，两端各写一份迟早会漂。
+ * **为什么整个文件都在壳层、不进 `core/`**：本项目有一条硬约束——`rules.ts` 必须是
+ * 纯逻辑，不碰 DOM、不碰全局存储、不读时间。把钱包放进 `core/` 等于给游戏开了
+ * 一条够得着 localStorage 的路，约束就废了。所以金币与 `rules.ts` 完全解耦：
+ * 游戏只在 `index.ts` 里提供一个**纯函数** `coins(state, outcome, bet)`，
+ * 由壳层在结算时调用。游戏不知道钱包存在，钱包也不认识任何具体游戏。
+ *
+ * 金币是**纯本地虚拟积分**：不充值、不可兑换、不可交易、不可提现，删掉浏览器数据即清零。
  */
 import type { GameModule, Outcome } from '../core/types'
 import { readJSON, writeJSON } from './storage'
@@ -25,10 +30,13 @@ export const SIGNIN_STEP = 25
 
 export interface Wallet {
   balance: number
+  /** 累计签到次数，用来推「连续第几天」 */
   signins: number
+  /** 上一次签到的本地日期串 `YYYY-MM-DD`；空串表示从未签到 */
   lastSignIn: string
 }
 
+/** 新玩家的钱包：启动资金够摸清规则，又不至于一局输光 */
 export function freshWallet(): Wallet {
   return { balance: START_COINS, signins: 0, lastSignIn: '' }
 }
@@ -38,6 +46,7 @@ export function readWallet(): Wallet {
   const fresh = freshWallet()
   const balance = typeof v.balance === 'number' && Number.isFinite(v.balance) ? Math.floor(v.balance) : fresh.balance
   return {
+    // 存档可能被手改坏（NaN / 小数 / 天文数字 / 负到没边），这里一律夹回合法区间
     balance: Math.min(Number.MAX_SAFE_INTEGER, Math.max(-fresh.balance * 5, balance)),
     signins: typeof v.signins === 'number' && Number.isFinite(v.signins) ? Math.max(0, Math.floor(v.signins)) : fresh.signins,
     lastSignIn: typeof v.lastSignIn === 'string' ? v.lastSignIn : fresh.lastSignIn,
@@ -59,7 +68,12 @@ export function writeBet(b: number): void {
   if (BET_STEPS.includes(b as (typeof BET_STEPS)[number])) writeJSON(BET_KEY, b)
 }
 
-/** 实际下注额：**永远不超过当前余额** */
+/**
+ * 实际下注额：**永远不超过当前余额**。
+ *
+ * 余额可以不足一档（比如只剩 7 金币），这时按 7 下注而不是把玩家挡在门外。
+ * 余额为 0 时下注 0——那一局照常能玩，只是不结算金币，不会出现负数的无穷递归。
+ */
 export function effectiveBet(wallet: Wallet, bet: number): number {
   if (!Number.isFinite(bet) || bet <= 0) return 0
   return Math.max(0, Math.min(Math.floor(bet), wallet.balance))
@@ -67,7 +81,10 @@ export function effectiveBet(wallet: Wallet, bet: number): number {
 
 // ---------------------------------------------------------------- 结算
 
-/** 默认结算：`win === true` 赢一注、`false` 输一注、`undefined` 不结算 */
+/**
+ * 默认结算：`win === true` 赢一注、`false` 输一注、`undefined` 不结算。
+ * 游戏没实现 `coins()` 时走这里——覆盖 38 款既有游戏里的 31 款。
+ */
 export function defaultDelta(outcome: Outcome, bet: number): number {
   if (bet <= 0) return 0
   if (outcome.win === true) return bet
@@ -75,7 +92,17 @@ export function defaultDelta(outcome: Outcome, bet: number): number {
   return 0
 }
 
-/** 赢钱封顶，某个游戏公式写错也不会把余额撑爆 */
+/**
+ * 结算一局，算出实际入账金币与结算后余额。**本函数不落盘**，由调用方写钱包
+ * ——这样它可以在测试里纯调用，也方便壳层决定「先更新 UI 还是先写盘」。
+ *
+ * 四道防线，保证钱包永远不会被算坏：
+ * 1. `coins()` 返回非有限数 → 当作不结算，绝不让 NaN 进钱包；
+ * 2. 赢钱设上限（`MAX_PAYOUT`），某个游戏公式写错也不会把余额撑爆；
+ * 3. 输钱设下限 `-stake`——最多输光本局下注额，**不透支**，
+ *    余额永远不会因为一次操作掉到 0 以下；
+ * 4. 结果余额再夹一次到 ≥0。
+ */
 export const MAX_PAYOUT = BET_STEPS[BET_STEPS.length - 1] * 100
 
 export interface SettleResult {
@@ -83,9 +110,6 @@ export interface SettleResult {
   balance: number
 }
 
-/**
- * 四道防线：非有限数当作不结算 → 封顶 → 不透支 → 结果余额夹到 ≥0。
- */
 export function settle(mod: GameModule, state: unknown, outcome: Outcome, wallet: Wallet, bet: number): SettleResult {
   const stake = effectiveBet(wallet, bet)
   let delta = mod.coins ? mod.coins(state as never, outcome, stake) : defaultDelta(outcome, stake)
@@ -99,7 +123,7 @@ export function settle(mod: GameModule, state: unknown, outcome: Outcome, wallet
 
 // ---------------------------------------------------------------- 每日签到
 
-/** 本地日期串 `YYYY-MM-DD`；不用 toISOString，那会把东八区的人算成前一天 */
+/** 本地日期串 `YYYY-MM-DD`；不用 `toISOString`，那会把东八区的人算成前一天 */
 export function todayKey(now: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
@@ -130,6 +154,7 @@ export function claimSignin(wallet: Wallet, now: Date = new Date()): { ok: boole
 
 // ---------------------------------------------------------------- 展示
 
+/** 把带符号的盈亏格式化成「+120」/「-50」/「±0」 */
 export function formatDelta(n: number): string {
   if (n > 0) return `+${n}`
   if (n < 0) return String(n)
@@ -137,6 +162,7 @@ export function formatDelta(n: number): string {
 }
 
 export function formatCoins(n: number): string {
+  // 金币数量可能很大，四个一组加千分位，免得手机上糊成一片
   const s = String(Math.trunc(n))
   return s.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }

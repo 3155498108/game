@@ -28,6 +28,7 @@ import { describe, expect, it } from 'vitest'
 const srcCore = import.meta.glob('/src/core/*.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
 const srcRender = import.meta.glob('/src/render/*.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
 const srcGames = import.meta.glob('/src/games/**/!(*.test).ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
+const srcShell = import.meta.glob('/src/shell/*.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
 
 const miniCore = import.meta.glob('/miniprogram/core/*.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
 const miniRender = import.meta.glob('/miniprogram/render/*.ts', { query: '?raw', import: 'default', eager: true }) as unknown as Record<string, string>
@@ -50,13 +51,50 @@ const registryRaw = import.meta.glob('/miniprogram/shell/registry.ts', { query: 
  */
 const SHELL_PREFIXES = ['/miniprogram/shell/', '/miniprogram/pages/']
 
+/**
+ * 越层规则**按层看**。
+ *
+ * - `core/` `render/` `games/` 是共享层：一条都不许依赖站点壳（`shell/` `pages/`）。
+ * - `shell/` 里被共享的那两份（`coins.ts` / `daily.ts`）**本身就是壳层文件**——
+ *   它们依赖同层的 `shell/storage.ts` 是天经地义，不算越层。
+ *   但那份 storage 是**平台专属**的（localStorage ↔ wx），所以它的 API 由
+ *   「两端壳层对账」那条检查钉住：行为有没有保证，靠的是**导出面对得上**，
+ *   不靠「这份依赖本身无害」。
+ */
+const SHARED_SHELL_ALLOWED = [
+  '/miniprogram/core/',
+  '/miniprogram/render/',
+  '/miniprogram/games/',
+  '/miniprogram/shell/storage.ts',
+]
+
 /** 平台专属、刻意不与网页版同步的文件 */
-const HAND_WRITTEN = new Set(['/miniprogram/render/audio.ts'])
+const HAND_WRITTEN = new Set([
+  '/miniprogram/render/audio.ts',
+  '/miniprogram/shell/storage.ts',
+  '/miniprogram/shell/runtime.ts',
+  '/miniprogram/shell/perf.ts',
+])
+
+/** 由清单生成，不算「计划外的文件」 */
+const GENERATED = new Set(['/miniprogram/shell/registry.ts'])
+
+/**
+ * 壳层里与平台无关、**逐字节共享**的两份。
+ *
+ * 它们只依赖 `../core/*` 与 `./storage`，而两端的 `shell/storage.ts`
+ * 暴露的是同一套 API（逻辑都在 `core/storage.ts`，壳层只注入后端）。
+ *
+ * 把它们纳入共享范围，值在**钱包那条链路**上：结算公式、签到判定、
+ * 余额夹取的任何一次改动，两端同时生效，不可能再漂移。
+ */
+const SHARED_SHELL = ['/src/shell/coins.ts', '/src/shell/daily.ts']
 
 const ALL: Record<string, string> = {
   ...srcCore,
   ...srcRender,
   ...srcGames,
+  ...srcShell,
   ...miniCore,
   ...miniRender,
   ...miniGames,
@@ -84,6 +122,7 @@ function expectedShared(): string[] {
     const m = /^\/src\/games\/([^/]+)\//.exec(k)
     if (m && games.includes(m[1])) out.push(k.replace('/src/', '/miniprogram/'))
   }
+  for (const k of SHARED_SHELL) out.push(k.replace('/src/', '/miniprogram/'))
   return out.sort()
 }
 
@@ -106,6 +145,59 @@ function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/gm, '$1')
 }
 
+/**
+ * 取出一个模块导出的所有名字。
+ *
+ * 覆盖四种写法：`export function/const/class/interface/type`、
+ * `export async function`、`export { a, b }`、`export type { a }`。
+ */
+function exportedNames(src: string): string[] {
+  const code = stripComments(src)
+  const out = new Set<string>()
+  for (const m of code.matchAll(
+    /^export\s+(?:async\s+)?(?:function|const|let|var|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm,
+  )) {
+    out.add(m[1])
+  }
+  for (const m of code.matchAll(/^export\s+(?:type\s+)?\{([^}]*)\}/gm)) {
+    for (const part of m[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/).pop()?.trim() ?? ''
+      if (name) out.add(name)
+    }
+  }
+  return [...out].sort()
+}
+
+/**
+ * **平台差异登记表**。
+ *
+ * 共享层（core / render / games / shell 的两份）靠「逐字节相同」保证两端一致；
+ * 但 `shell/runtime.ts` 与 `shell/storage.ts` 是**手写**的两份，承载平台差异，
+ * 零差异机制管不到它们。
+ *
+ * 它们的导出名一旦漂移——比如网页版加了个函数、小程序侧忘了加——
+ * 编译**不会报错**（两边各自都合法），要到运行时才炸。
+ * 所以这里把两边的导出名集合拿来比对：除了下面登记在册的，其余必须完全一致。
+ *
+ * 登记规则：只登记**确实由平台差异造成**的名字，且要写清为什么。
+ * 数量被下面的断言钉住——想新增例外得改那个数字，是一次有意识的动作。
+ */
+const PLATFORM_ONLY: Record<string, { web: string[]; mini: string[]; why: string }> = {
+  'shell/storage.ts': {
+    web: ['installLocalBackend'],
+    mini: ['installWxBackend'],
+    why: '注入的存储后端不同：localStorage ↔ wx.*StorageSync。名字必须不同，否则会以为两端可互换',
+  },
+  'shell/runtime.ts': {
+    web: ['PlayElements'],
+    mini: ['CanvasNode', 'Host', 'CtrlView'],
+    why: '网页版拿 DOM 元素，小程序拿 canvas 节点 + setData 宿主；类型形态天生不同',
+  },
+}
+
+/** 平台专属导出的总数。新增例外时这里要改，并在上面写清原因 */
+const PLATFORM_ONLY_COUNT = 6
+
 describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
   it('移植清单非空', () => {
     expect(portedGames().length).toBeGreaterThan(0)
@@ -124,8 +216,13 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
   })
 
   it('小程序侧没有计划外的文件', () => {
-    const actual = [...Object.keys(miniCore), ...Object.keys(miniRender), ...Object.keys(miniGames)]
-      .filter((k) => !HAND_WRITTEN.has(k))
+    const actual = [
+      ...Object.keys(miniCore),
+      ...Object.keys(miniRender),
+      ...Object.keys(miniGames),
+      ...Object.keys(miniShell),
+    ]
+      .filter((k) => !HAND_WRITTEN.has(k) && !GENERATED.has(k))
       .sort()
     expect(actual).toEqual(expectedShared())
   })
@@ -148,6 +245,8 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
     const bad: string[] = []
     for (const key of expectedShared()) {
       const base = key.slice(0, key.lastIndexOf('/'))
+      // 被共享的那两份壳层文件按「壳内依赖」处理，其余按「共享层不许碰壳」处理
+      const isSharedShellFile = SHARED_SHELL.includes(key.replace('/miniprogram/', '/src/'))
       for (const m of ALL[key].matchAll(/from '(\.[^']+)'/g)) {
         const spec = m[1]
         const target = spec.endsWith('.ts') ? spec : `${spec}.ts`
@@ -156,8 +255,11 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
           bad.push(`${key} 里的 import '${spec}' 解析不到`)
           continue
         }
-        // 越层检查：共享层只能依赖共享层，不许碰站点壳
-        if (SHELL_PREFIXES.some((p) => resolved.startsWith(p))) {
+        if (isSharedShellFile) {
+          const ok = SHARED_SHELL_ALLOWED.some((p) => resolved === p || resolved.startsWith(p))
+          if (!ok) bad.push(`${key} 越层依赖了 ${resolved}：共享的壳层文件只许依赖 core/render/games 与 shell/storage.ts`)
+        } else if (SHELL_PREFIXES.some((p) => resolved.startsWith(p))) {
+          // 越层检查：共享层只能依赖共享层，不许碰站点壳
           bad.push(`${key} 越层依赖了 ${resolved}：共享层不许依赖站点壳`)
         }
       }
@@ -236,5 +338,71 @@ describe('共享层漂移检查（src/ ↔ miniprogram/）', () => {
       }
     }
     expect(bad).toEqual([])
+  })
+})
+
+// ---------------- 两端壳层对账 ----------------
+
+describe('两端壳层对账（src/shell/ ↔ miniprogram/shell/）', () => {
+  /** 两端都有的壳层模块 */
+  const SHELL_MODULES = [
+    'shell/coins.ts',
+    'shell/daily.ts',
+    'shell/storage.ts',
+    'shell/runtime.ts',
+    'shell/registry.ts',
+  ]
+
+  it('每个壳层模块两端都在（少一个就是漏了一端）', () => {
+    for (const m of SHELL_MODULES) {
+      expect(ALL[`/src/${m}`], `网页版缺 ${m}`).toBeTruthy()
+      expect(ALL[`/miniprogram/${m}`], `小程序侧缺 ${m}`).toBeTruthy()
+    }
+  })
+
+  it('导出面一致：单边的导出必须恰好是登记在册的平台差异', () => {
+    // 注意这是**严格相等**，不是「不包含」。
+    // 「网页版有、小程序没有」的名字集合必须恰好等于登记的例外——
+    // 多一个就是漏同步（运行时才炸），少一个就是登记已经过期（白白开了口子）。
+    const bad: string[] = []
+    for (const m of SHELL_MODULES) {
+      const web = exportedNames(ALL[`/src/${m}`])
+      const mini = exportedNames(ALL[`/miniprogram/${m}`])
+      const ex = PLATFORM_ONLY[m] ?? { web: [], mini: [], why: '' }
+      const onlyWeb = web.filter((n) => !mini.includes(n)).sort()
+      const onlyMini = mini.filter((n) => !web.includes(n)).sort()
+      if (onlyWeb.join(',') !== [...ex.web].sort().join(',')) {
+        bad.push(`${m}：只在网页版的是 [${onlyWeb.join(', ')}]，登记的是 [${ex.web.join(', ')}]`)
+      }
+      if (onlyMini.join(',') !== [...ex.mini].sort().join(',')) {
+        bad.push(`${m}：只在小程序侧的是 [${onlyMini.join(', ')}]，登记的是 [${ex.mini.join(', ')}]`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+
+  it('登记在册的平台差异确实只在一侧存在', () => {
+    // 防止「登记了但其实两边都有」——那说明登记已经过期，白白开了一个口子
+    for (const [m, ex] of Object.entries(PLATFORM_ONLY)) {
+      const web = exportedNames(ALL[`/src/${m}`])
+      const mini = exportedNames(ALL[`/miniprogram/${m}`])
+      for (const n of ex.web) {
+        expect(web, `${m} 的 ${n} 应当只存在于网页版`).toContain(n)
+        expect(mini, `${m} 的 ${n} 不该出现在小程序侧`).not.toContain(n)
+      }
+      for (const n of ex.mini) {
+        expect(mini, `${m} 的 ${n} 应当只存在于小程序侧`).toContain(n)
+        expect(web, `${m} 的 ${n} 不该出现在网页版`).not.toContain(n)
+      }
+    }
+  })
+
+  it('平台差异登记表的规模是钉住的（新增例外要改数字并写清原因）', () => {
+    const total = Object.values(PLATFORM_ONLY).reduce((s, e) => s + e.web.length + e.mini.length, 0)
+    expect(total).toBe(PLATFORM_ONLY_COUNT)
+    // 每条例外都要写清「为什么这是平台差异」，不能只登记不解释
+    for (const [m, e] of Object.entries(PLATFORM_ONLY)) {
+      expect(e.why.length, `${m} 的平台差异没写原因`).toBeGreaterThan(10)
+    }
   })
 })

@@ -129,12 +129,6 @@ export function todayKey(now: Date = new Date()): string {
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`
 }
 
-/** 距离明天还有多少毫秒——用来安排「明天再来」的提醒 */
-export function msUntilTomorrow(now: Date = new Date()): number {
-  const t = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime()
-  return Math.max(0, t - now.getTime())
-}
-
 export function canSignIn(wallet: Wallet, now: Date = new Date()): boolean {
   return wallet.lastSignIn !== todayKey(now)
 }

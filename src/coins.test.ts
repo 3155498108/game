@@ -20,7 +20,6 @@ import {
   effectiveBet,
   formatCoins,
   formatDelta,
-  msUntilTomorrow,
   readWallet,
   settle,
   signinAmount,
@@ -180,16 +179,6 @@ describe('每日签到', () => {
     // 月/日补零，否则 10-16 和 1-16 的字符串没法直接比
     expect(todayKey(new Date(2026, 0, 5, 12, 0))).toBe('2026-01-05')
     expect(todayKey(new Date(2026, 10, 16, 12, 0))).toBe('2026-11-16')
-  })
-
-  it('明天的剩余毫秒数在 (0, 24h] 之间', () => {
-    for (const h of [0, 6, 12, 23]) {
-      const ms = msUntilTomorrow(new Date(2026, 9, 16, h, 0, 0))
-      expect(ms).toBeGreaterThan(0)
-      expect(ms).toBeLessThanOrEqual(24 * 3600 * 1000)
-    }
-    // 午夜整点：到明天正好一整天
-    expect(msUntilTomorrow(new Date(2026, 9, 16, 0, 0, 0))).toBe(24 * 3600 * 1000)
   })
 
   it('签到是破产玩家的最后一道救赎', () => {

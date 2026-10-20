@@ -24,6 +24,7 @@
  *   src/core/*.ts              → miniprogram/core/          全部
  *   src/render/*.ts            → miniprogram/render/        除 audio.ts 外全部
  *   src/games/<已移植>/*.ts    → miniprogram/games/<id>/    只复制清单里的游戏
+ *   src/shell/{coins,daily}.ts → miniprogram/shell/         壳层里与平台无关的两份
  *   移植清单                   → miniprogram/shell/registry.ts  **生成**
  *
  * ## 三个刻意的不对称
@@ -35,6 +36,17 @@
  *
  * 复制是**逐字节**的，不做任何改写。共享层与网页版保持零差异，
  * 这样「两版要不要分仓库」这个决定随时可以反悔。
+ *
+ * ### 为什么 `shell/coins.ts` 与 `shell/daily.ts` 也能共享
+ *
+ * 壳层里的大部分是平台专属的（DOM ↔ WXML、localStorage ↔ wx），
+ * 但**钱包/结算/签到**与**每日挑战**这两份不是：它们只 import `../core/*`
+ * 与 `./storage`，而两端的 `shell/storage.ts` 暴露的是**同一套 API**
+ * （逻辑都在 `core/storage.ts`，壳层只注入后端）。
+ *
+ * 所以它们可以逐字节共享。这条很值钱——**钱包那条链路上出的每一次改动
+ * （结算公式、签到判定、余额夹取）两端同时生效，不可能再漂移**。
+ * 共享层之外的代码不受这个机制保护，所以共享范围要尽量往里收。
  *
  * ## 注册表为什么是生成的
  *
@@ -60,8 +72,16 @@ const MINI = join(ROOT, 'miniprogram')
  * 不参与复制、也**绝不会被删除**的文件。
  * 注意：这里的路径必须相对**仓库根**（与 rel() 输出一致），
  * 早先写成相对 miniprogram/ 的 'render/audio.ts'，结果孤儿检查把手写的那份当成了多余文件删掉。
+ *
+ * `shell/` 下这三个是**手写**的：它们承载平台差异（DOM ↔ WXML、localStorage ↔ wx），
+ * 没法共享。`shell/registry.ts` 是生成物，登记在 planned 里而不是这里。
  */
-const HAND_WRITTEN = new Set(['miniprogram/render/audio.ts'])
+const HAND_WRITTEN = new Set([
+  'miniprogram/render/audio.ts',
+  'miniprogram/shell/storage.ts',
+  'miniprogram/shell/runtime.ts',
+  'miniprogram/shell/perf.ts',
+])
 
 const CHECK_ONLY = process.argv.includes('--check')
 
@@ -96,6 +116,12 @@ function plan(games) {
   for (const name of listTs(join(SRC, 'render'))) {
     if (name === 'audio.ts') continue // 平台专属，小程序自己那份
     files.push({ from: join(SRC, 'render', name), to: join(MINI, 'render', name) })
+  }
+
+  // 壳层里与平台无关的两份：钱包/结算/签到、每日挑战。
+  // 它们只依赖 `../core/*` 与 `./storage`，两端的 storage 暴露同一套 API。
+  for (const name of ['coins.ts', 'daily.ts']) {
+    files.push({ from: join(SRC, 'shell', name), to: join(MINI, 'shell', name) })
   }
 
   for (const id of games) {
@@ -214,10 +240,12 @@ const registryPath = join(MINI, 'shell', 'registry.ts')
 const registryContent = renderRegistry(games)
 const registryChanged = !existsSync(registryPath) || readFileSync(registryPath, 'utf8') !== registryContent
 
-// 孤儿检查：miniprogram/{core,render,games} 下不该有计划外的文件
+// 孤儿检查：miniprogram/{core,render,games,shell} 下不该有计划外的文件
+// （`shell/` 也纳入：那边的手写文件会进小程序包，留个没人认领的旧文件进去是悄悄的体积损失）
 const planned = new Set(files.map((f) => rel(f.to)))
+planned.add(rel(registryPath)) // 注册表是生成物，也在计划内
 const orphans = []
-for (const dir of ['core', 'render', 'games']) {
+for (const dir of ['core', 'render', 'games', 'shell']) {
   const base = join(MINI, dir)
   if (!existsSync(base)) continue
   const walk = (d) => {
@@ -261,7 +289,7 @@ if (registryChanged) {
 for (const o of orphans) {
   // 双保险：删除是不可逆的，宁可漏删也不能误删
   if (HAND_WRITTEN.has(o)) continue
-  if (!/^miniprogram\/(core|render|games)\//.test(o)) {
+  if (!/^miniprogram\/(core|render|games|shell)\//.test(o)) {
     console.error(`  [跳过] ${o}：不在受管目录内`)
     continue
   }
